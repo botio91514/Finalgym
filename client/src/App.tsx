@@ -22,9 +22,8 @@ import PaymentDetails from './components/PaymentDetails';
 // Define API base URL - make sure this matches your backend port
 // Define API base URL - allow environment variable override
 export const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD
-  ? 'https://gym-backend.onrender.com' // Fallback if env var is missing
+  ? 'https://gymbackend-uqt3.onrender.com' // Fallback to provided Render URL
   : 'http://localhost:3000');
-
 
 
 
