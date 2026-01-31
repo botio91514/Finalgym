@@ -53,7 +53,9 @@ const allowedOrigins = [
   'https://gym-frontend-hz0n.onrender.com',
   'https://stargym.netlify.app',
   'https://starfitnesspetlad.netlify.app',
-  'https://stargympetlad.netlify.app'
+  'https://stargympetlad.netlify.app',
+  'https://xyzgym.netlify.app',
+  'https://gym-management-system-psi.vercel.app'
 ];
 
 // Add environment-specific origins
