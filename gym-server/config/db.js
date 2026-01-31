@@ -19,7 +19,9 @@ const connectDB = async () => {
       console.log('---------------------------------\n');
     }
 
-    process.exit(1);
+    console.error('MongoDB Connection Error:', err.message);
+    // Do not exit the process, allow the server to start (requests will fail but app stays up)
+    // process.exit(1);
   }
 };
 
