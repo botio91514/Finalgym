@@ -20,9 +20,10 @@ import PaymentDetails from './components/PaymentDetails';
 
 
 // Define API base URL - make sure this matches your backend port
-export const API_BASE_URL = process.env.NODE_ENV === 'production'
-  ? 'https://star-gym-backend.vercel.app'
-  : 'http://localhost:3000';
+// Define API base URL - allow environment variable override
+export const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD
+  ? 'https://gym-backend.onrender.com' // Fallback if env var is missing
+  : 'http://localhost:3000');
 
 
 
