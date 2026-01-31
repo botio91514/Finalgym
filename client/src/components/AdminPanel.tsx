@@ -1,0 +1,3335 @@
+import React, { useState, useEffect } from 'react';
+import { Users, Calendar, CreditCard, CheckCircle, Eye, Edit, Trash, Bell, LayoutDashboard, RefreshCw, BarChart2, Settings, X, LogOut, Loader2, ChevronRight, Download, FileCheck, ShoppingBag, TrendingUp } from 'lucide-react';
+import { toast } from 'react-hot-toast';
+import { API_BASE_URL } from '../App';
+import { useNavigate } from 'react-router-dom';
+import { apiClient, verifyAuth, getSettings, updateSettings, Settings as SettingsType, getExpenses } from '../utils/apiClient';
+import { addMonths } from 'date-fns';
+import OffersSection from './OffersSection';
+import Expenses from './Expenses';
+import StoreManagement from './StoreManagement';
+import StoreRevenue from './StoreRevenue';
+
+interface User {
+  _id: string;
+  name: string;
+  email: string;
+  phone: string;
+  address?: string;
+  dob: string;
+  photo: string;
+  plan: string;
+  startDate: string;
+  endDate: string;
+  paymentMethod: string;
+  paymentStatus: string;
+  subscriptionStatus: string;
+  originalJoinDate?: string; // Store the original joining date
+  monthlyRevenue?: {
+    month: number;
+    year: number;
+    amount: number;
+    isRenewal: boolean;
+    plan: string;
+    startDate: string;
+  }[];
+  renewals?: {
+    plan: string;
+    startDate: string;
+    endDate: string;
+    paymentMethod: string;
+    renewedAt?: string;
+    previousAmount: number;
+    newAmount: number;
+    previousPlan?: string;
+  }[];
+  renewalCount?: number;
+}
+
+interface MembershipEntry {
+  type: 'join' | 'renewal';
+  date: string;
+  duration: string;
+  amount: number;
+  paymentMode: string;
+  plan: string;
+  paymentStatus: string;
+  transactionId?: string;
+  notes?: string;
+  userId: string;
+}
+
+// Settings Section Components
+const PlanPricingSection: React.FC<{
+  planPricing: SettingsType['planPricing'];
+  onSave: (data: SettingsType['planPricing']) => void;
+  isSaving: boolean;
+}> = ({ planPricing, onSave, isSaving }) => {
+  const [prices, setPrices] = useState(planPricing);
+
+  useEffect(() => {
+    setPrices(planPricing);
+  }, [planPricing]);
+
+  const handleChange = (plan: keyof typeof planPricing, value: number) => {
+    setPrices({ ...prices, [plan]: value });
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave(prices);
+  };
+
+  return (
+    <div className="p-6 border border-gray-200 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50">
+      <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+        <CreditCard className="w-5 h-5" />
+        Membership Plan Pricing
+      </h3>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {(['1month', '2month', '3month', '6month', 'yearly'] as const).map((plan) => (
+            <div key={plan} className="bg-white p-4 rounded-lg border border-gray-200">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {plan === '1month' ? '1 Month' :
+                  plan === '2month' ? '2 Months' :
+                    plan === '3month' ? '3 Months' :
+                      plan === '6month' ? '6 Months' : '1 Year'}
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500">Rs.</span>
+                <input
+                  type="number"
+                  value={prices[plan]}
+                  onChange={(e) => handleChange(plan, parseFloat(e.target.value) || 0)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  min="0"
+                  step="100"
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+        <button
+          type="submit"
+          disabled={isSaving}
+          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        >
+          {isSaving ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            'Save Pricing'
+          )}
+        </button>
+      </form>
+    </div>
+  );
+};
+
+const GymInfoSection: React.FC<{
+  gymInfo: SettingsType['gymInfo'];
+  onSave: (data: SettingsType['gymInfo']) => void;
+  isSaving: boolean;
+}> = ({ gymInfo, onSave, isSaving }) => {
+  const [info, setInfo] = useState(gymInfo);
+
+  useEffect(() => {
+    setInfo(gymInfo);
+  }, [gymInfo]);
+
+  const handleChange = (field: keyof typeof gymInfo, value: string) => {
+    setInfo({ ...info, [field]: value });
+  };
+
+  const handleFooterChange = (section: 'openingHours' | 'paymentMethods' | 'contactEmail' | 'contactPhone', field: string, value: string) => {
+    setInfo({
+      ...info,
+      footer: {
+        ...info.footer,
+        [section]: section === 'openingHours'
+          ? { ...info.footer.openingHours, [field]: value }
+          : value
+      }
+    });
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave(info);
+  };
+
+  return (
+    <div className="p-6 border border-gray-200 rounded-lg bg-gradient-to-br from-green-50 to-emerald-50">
+      <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+        <LayoutDashboard className="w-5 h-5" />
+        Gym Information
+      </h3>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Basic Gym Information */}
+        <div>
+          <h4 className="text-lg font-medium text-gray-800 mb-3">Basic Information</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Gym Name</label>
+              <input
+                type="text"
+                value={info.name}
+                onChange={(e) => handleChange('name', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+              <input
+                type="text"
+                value={info.phone}
+                onChange={(e) => handleChange('phone', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+              <input
+                type="email"
+                value={info.email}
+                onChange={(e) => handleChange('email', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Website</label>
+              <input
+                type="url"
+                value={info.website}
+                onChange={(e) => handleChange('website', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
+              <textarea
+                value={info.address}
+                onChange={(e) => handleChange('address', e.target.value)}
+                rows={2}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Business Hours</label>
+              <input
+                type="text"
+                value={info.businessHours}
+                onChange={(e) => handleChange('businessHours', e.target.value)}
+                placeholder="e.g., 6:00 AM - 10:00 PM"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Footer Information */}
+        <div className="border-t pt-4">
+          <h4 className="text-lg font-medium text-gray-800 mb-3">Footer Information</h4>
+          <div className="space-y-4">
+            {/* Opening Hours */}
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
+              <h5 className="text-sm font-semibold text-gray-700 mb-3">Opening Hours</h5>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Days</label>
+                  <input
+                    type="text"
+                    value={info.footer?.openingHours?.days || ''}
+                    onChange={(e) => handleFooterChange('openingHours', 'days', e.target.value)}
+                    placeholder="e.g., Monday - Saturday"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Morning Hours</label>
+                  <input
+                    type="text"
+                    value={info.footer?.openingHours?.morningHours || ''}
+                    onChange={(e) => handleFooterChange('openingHours', 'morningHours', e.target.value)}
+                    placeholder="e.g., 6:00 AM - 9:00 AM"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Evening Hours</label>
+                  <input
+                    type="text"
+                    value={info.footer?.openingHours?.eveningHours || ''}
+                    onChange={(e) => handleFooterChange('openingHours', 'eveningHours', e.target.value)}
+                    placeholder="e.g., 4:00 PM - 9:00 PM"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Payment Methods */}
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
+              <h5 className="text-sm font-semibold text-gray-700 mb-3">Payment Methods</h5>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Payment Methods (comma separated)</label>
+                <input
+                  type="text"
+                  value={info.footer?.paymentMethods || ''}
+                  onChange={(e) => handleFooterChange('paymentMethods', '', e.target.value)}
+                  placeholder="e.g., Cash, Online Payment"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+                <p className="mt-1 text-xs text-gray-500">Separate multiple methods with commas</p>
+              </div>
+            </div>
+
+            {/* Contact Information */}
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
+              <h5 className="text-sm font-semibold text-gray-700 mb-3">Contact Information</h5>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Contact Email</label>
+                  <input
+                    type="email"
+                    value={info.footer?.contactEmail || ''}
+                    onChange={(e) => handleFooterChange('contactEmail', '', e.target.value)}
+                    placeholder="e.g., admin@gmail.com"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Contact Phone</label>
+                  <input
+                    type="text"
+                    value={info.footer?.contactPhone || ''}
+                    onChange={(e) => handleFooterChange('contactPhone', '', e.target.value)}
+                    placeholder="e.g., 9101321032"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          disabled={isSaving}
+          className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        >
+          {isSaving ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            'Save Gym Info'
+          )}
+        </button>
+      </form>
+    </div>
+  );
+};
+
+const AdminPanel: React.FC = () => {
+  const [users, setUsers] = useState<User[]>([]);
+  const [activeTab, setActiveTab] = useState('members');
+  const [selectedUserForNotification, setSelectedUserForNotification] = useState<User | null>(null);
+  const [isNotifying, setIsNotifying] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [loadingStates, setLoadingStates] = useState<{ [key: string]: boolean }>({});
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<{ [key: string]: boolean }>({});
+  const [isDownloadingPDF, setIsDownloadingPDF] = useState(false);
+  const [activeSidebarSection, setActiveSidebarSection] = useState('dashboard');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [membershipEntries, setMembershipEntries] = useState<MembershipEntry[]>([]);
+  const [confirmAction, setConfirmAction] = useState<{
+    visible: boolean;
+    action: 'approve' | 'delete' | null;
+    userId: string | null;
+    message: string;
+  }>({ visible: false, action: null, userId: null, message: '' });
+  const [settings, setSettings] = useState<SettingsType | null>(null);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [receiptSearchQuery, setReceiptSearchQuery] = useState('');
+  const [receiptVerificationData, setReceiptVerificationData] = useState<any>(null);
+  const [isVerifyingReceipt, setIsVerifyingReceipt] = useState(false);
+  const [monthlyExpenses, setMonthlyExpenses] = useState(0);
+  const navigate = useNavigate();
+
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth();
+
+  useEffect(() => {
+    const fetchMonthlyExpenses = async () => {
+      try {
+        const expenses = await getExpenses(currentMonth, currentYear);
+        const total = expenses.reduce((sum: number, item: any) => sum + (item.amount || 0), 0);
+        setMonthlyExpenses(total);
+      } catch (error) {
+        console.error('Failed to fetch dashboard expenses');
+      }
+    };
+    if (activeSidebarSection === 'dashboard') {
+      fetchMonthlyExpenses();
+    }
+  }, [activeSidebarSection, currentMonth, currentYear]);
+
+  const fetchUsers = async (showLoading: boolean | any = true) => {
+    const shouldShowLoading = typeof showLoading === 'boolean' ? showLoading : true;
+    try {
+      if (shouldShowLoading) setIsRefreshing(true);
+
+      const response = await apiClient('/api/users', {
+        method: 'GET',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to fetch users');
+      }
+
+      const data = await response.json();
+      if (data.status === 'success') {
+        setUsers(data.data.users);
+      }
+    } catch (error: any) {
+      if (error.message.includes('Session expired') || error.message.includes('No authentication token')) {
+        navigate('/admin/login');
+        return;
+      }
+      toast.error(error.message || 'Failed to fetch users');
+    } finally {
+      if (shouldShowLoading) setIsRefreshing(false);
+    }
+  };
+
+  // Verify authentication on mount and periodically
+  useEffect(() => {
+    const checkAuth = async () => {
+      const isValid = await verifyAuth();
+      if (!isValid) {
+        navigate('/admin/login');
+      }
+    };
+
+    checkAuth();
+
+    // Re-verify every 5 minutes
+    const authInterval = setInterval(checkAuth, 5 * 60 * 1000);
+
+    return () => clearInterval(authInterval);
+  }, [navigate]);
+
+  useEffect(() => {
+    fetchUsers();
+
+    // Auto refresh every 30 seconds
+    const refreshInterval = setInterval(() => {
+      fetchUsers(false);
+    }, 30000);
+
+    return () => clearInterval(refreshInterval);
+  }, []);
+
+  // Fetch settings when settings section is active
+  useEffect(() => {
+    if (activeSidebarSection === 'settings' && !settings) {
+      fetchSettings();
+    }
+  }, [activeSidebarSection]);
+
+  const fetchSettings = async () => {
+    try {
+      setIsLoadingSettings(true);
+      const data = await getSettings();
+      setSettings(data);
+    } catch (error: any) {
+      console.error('Error fetching settings:', error);
+      toast.error(error.message || 'Failed to load settings');
+    } finally {
+      setIsLoadingSettings(false);
+    }
+  };
+
+  const handleSaveSettings = async (section: string, data: any) => {
+    try {
+      setIsSavingSettings(true);
+      await updateSettings({ [section]: data });
+      const updatedSettings = await getSettings();
+      setSettings(updatedSettings);
+      toast.success('Settings updated successfully!');
+    } catch (error: any) {
+      console.error('Error updating settings:', error);
+      toast.error(error.message || 'Failed to update settings');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
+  // Load confirmed membership history entries for all users (including deleted ones)
+  // This ensures revenue calculations include deleted members' subscription amounts
+  useEffect(() => {
+    const loadAllMembershipEntries = async () => {
+      try {
+        const token = sessionStorage.getItem('token');
+        if (!token) return;
+
+        // Fetch all membership history entries including from deleted users
+        // This is important for accurate revenue calculations
+        const res = await fetch(`${API_BASE_URL}/api/users/membership-history/all`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!res.ok) {
+          // Fallback to per-user fetching if the new endpoint fails
+          const allEntries: MembershipEntry[] = [];
+          await Promise.all(
+            users.map(async (u) => {
+              try {
+                const userRes = await fetch(`${API_BASE_URL}/api/users/${u._id}/membership-history`, {
+                  headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                  }
+                });
+                if (!userRes.ok) return;
+                const userData = await userRes.json();
+                const entries = (userData?.data?.membershipHistory || []) as any[];
+                entries.forEach((e) => {
+                  if (e && e.paymentStatus === 'confirmed') {
+                    allEntries.push({ ...e, userId: u._id });
+                  }
+                });
+              } catch (_) {
+                // ignore per-user fetch errors
+              }
+            })
+          );
+          setMembershipEntries(allEntries);
+          return;
+        }
+
+        const data = await res.json();
+        const entries = (data?.data?.membershipHistory || []) as any[];
+        setMembershipEntries(entries);
+      } catch (_) {
+        // ignore errors, keep existing entries
+      }
+    };
+
+    // Load membership entries when component mounts or users change
+    // This ensures revenue includes deleted users' data
+    loadAllMembershipEntries();
+  }, [users]);
+
+  const filteredUsers = () => {
+    let filtered = [...users];
+
+    // Apply search filter
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      filtered = filtered.filter(user =>
+        user.name.toLowerCase().includes(searchLower) ||
+        user.email.toLowerCase().includes(searchLower) ||
+        user.phone.includes(searchTerm)
+      );
+    }
+
+    // Apply tab filters
+    switch (activeTab) {
+      case 'pending':
+        return filtered.filter(user => user.paymentStatus === 'pending');
+      case 'expired':
+        return filtered.filter(user => {
+          const endDate = new Date(user.endDate);
+          return endDate < new Date();
+        });
+      case '1month':
+        return filtered.filter(user => user.plan === '1month' && !isSubscriptionExpired(user.endDate));
+      case '2month':
+        return filtered.filter(user => user.plan === '2month' && !isSubscriptionExpired(user.endDate));
+      case '3month':
+        return filtered.filter(user => user.plan === '3month' && !isSubscriptionExpired(user.endDate));
+      case '6month':
+        return filtered.filter(user => user.plan === '6month' && !isSubscriptionExpired(user.endDate));
+      case 'yearly':
+        return filtered.filter(user => user.plan === 'yearly' && !isSubscriptionExpired(user.endDate));
+      case 'online-payment':
+        return filtered.filter(user => user.paymentMethod === 'online' && !isSubscriptionExpired(user.endDate));
+      default:
+        return filtered; // Show all members including expired ones
+    }
+  };
+
+  const isSubscriptionExpired = (endDate: string | Date) => {
+    return new Date(endDate) < new Date();
+  };
+
+  const isSubscriptionExpiring = (endDate: string | Date) => {
+    const today = new Date();
+    const end = new Date(endDate);
+    const daysLeft = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    return daysLeft > 0 && daysLeft <= 7;
+  };
+
+  const getDaysLeft = (endDate: string | Date) => {
+    const today = new Date();
+    const end = new Date(endDate);
+    return Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  };
+
+  const getPlanAmount = (plan: string): number => {
+    const amounts: Record<string, number> = {
+      '1month': 1500,
+      '2month': 2500,
+      '3month': 3500,
+      '6month': 5000,
+      'yearly': 8000
+    };
+    return amounts[plan] || 0;
+  };
+
+  const getPlanAmountDisplay = (plan: string): string => {
+    const amounts: Record<string, string> = {
+      '1month': '₹1,500',
+      '2month': '₹2,500',
+      '3month': '₹3,500',
+      '6month': '₹5,000',
+      'yearly': '₹8,000'
+    };
+    return amounts[plan] || 'N/A';
+  };
+
+  const approvePayment = async (userId: string) => {
+    try {
+      setLoadingStates(prev => ({ ...prev, [userId]: true }));
+      const token = sessionStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/users/approve/${userId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to approve payment');
+      }
+
+      const data = await response.json();
+
+      if (data.status === 'success') {
+        setUsers(users.map(user =>
+          user._id === userId
+            ? { ...user, paymentStatus: 'confirmed' }
+            : user
+        ));
+        toast.success('Payment approved successfully!', {
+          duration: 4000,
+          position: 'top-right',
+          style: {
+            background: '#10B981',
+            color: '#fff',
+            padding: '16px',
+            borderRadius: '8px',
+          },
+        });
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to approve payment', {
+        duration: 4000,
+        position: 'top-right',
+        style: {
+          background: '#EF4444',
+          color: '#fff',
+          padding: '16px',
+          borderRadius: '8px',
+        },
+      });
+    } finally {
+      setLoadingStates(prev => ({ ...prev, [userId]: false }));
+    }
+  };
+
+  const showConfirm = (action: 'approve' | 'delete', userId: string, message: string) => {
+    setConfirmAction({ visible: true, action, userId, message });
+  };
+
+  const handleConfirmProceed = async () => {
+    if (!confirmAction.action || !confirmAction.userId) return;
+    const { action, userId } = confirmAction;
+    setConfirmAction(prev => ({ ...prev, visible: false }));
+    if (action === 'approve') {
+      await approvePayment(userId);
+    } else if (action === 'delete') {
+      await deleteMember(userId);
+    }
+  };
+
+  const handleConfirmCancel = () => {
+    setConfirmAction({ visible: false, action: null, userId: null, message: '' });
+  };
+
+  const handleDownloadAllMembersPDF = async () => {
+    try {
+      setIsDownloadingPDF(true);
+      const token = sessionStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      toast.loading('Generating PDF report...', { id: 'pdf-download' });
+
+      const response = await fetch(`${API_BASE_URL}/api/members/download-pdf`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate PDF');
+      }
+
+      // Get the PDF blob
+      const blob = await response.blob();
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = 'all-members-report.pdf';
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      toast.success('PDF downloaded successfully!', { id: 'pdf-download' });
+    } catch (error: any) {
+      console.error('Error downloading PDF:', error);
+      toast.error(error.message || 'Failed to download PDF', { id: 'pdf-download' });
+    } finally {
+      setIsDownloadingPDF(false);
+    }
+  };
+
+  const handleVerifyReceipt = async () => {
+    if (!receiptSearchQuery.trim()) {
+      toast.error('Please enter a receipt number or user ID');
+      return;
+    }
+
+    try {
+      setIsVerifyingReceipt(true);
+      setReceiptVerificationData(null);
+
+      const token = sessionStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      // Determine if it's a receipt number or user ID
+      const isReceiptNumber = receiptSearchQuery.toUpperCase().startsWith('RCP-');
+      const params = isReceiptNumber
+        ? `?receiptNumber=${encodeURIComponent(receiptSearchQuery)}`
+        : `?userId=${encodeURIComponent(receiptSearchQuery)}`;
+
+      const response = await fetch(`${API_BASE_URL}/api/receipt/verify${params}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to verify receipt');
+      }
+
+      if (data.status === 'success' && data.data) {
+        setReceiptVerificationData(data.data);
+        toast.success('Receipt verified successfully!');
+      } else {
+        throw new Error(data.message || 'Invalid receipt data');
+      }
+    } catch (error: any) {
+      console.error('Error verifying receipt:', error);
+      toast.error(error.message || 'Failed to verify receipt');
+      setReceiptVerificationData(null);
+    } finally {
+      setIsVerifyingReceipt(false);
+    }
+  };
+
+  const notifyExpiredMember = async (userId: string, userEmail: string, userName: string) => {
+    try {
+      setIsNotifying(true);
+      const token = sessionStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/users/notify-expired/${userId}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          email: userEmail,
+          name: userName
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to send notification');
+      }
+
+      const data = await response.json();
+      if (data.status === 'success') {
+        toast.success('Notification sent successfully!', {
+          duration: 4000,
+          position: 'top-right',
+          style: {
+            background: '#10B981',
+            color: '#fff',
+            padding: '16px',
+            borderRadius: '8px',
+          },
+        });
+        setShowNotificationModal(false);
+        setSelectedUserForNotification(null);
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to send notification', {
+        duration: 4000,
+        position: 'top-right',
+        style: {
+          background: '#EF4444',
+          color: '#fff',
+          padding: '16px',
+          borderRadius: '8px',
+        },
+      });
+    } finally {
+      setIsNotifying(false);
+    }
+  };
+
+  const notifyExpiringMember = async (userId: string, userEmail: string, userName: string) => {
+    try {
+      setIsNotifying(true);
+      const token = sessionStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/users/notify-expiring/${userId}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          email: userEmail,
+          name: userName
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to send notification');
+      }
+
+      const data = await response.json();
+      if (data.status === 'success') {
+        toast.success('Expiry notification sent successfully!', {
+          duration: 4000,
+          position: 'top-right',
+          style: {
+            background: '#10B981',
+            color: '#fff',
+            padding: '16px',
+            borderRadius: '8px',
+          },
+        });
+        setShowNotificationModal(false);
+        setSelectedUserForNotification(null);
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to send notification', {
+        duration: 4000,
+        position: 'top-right',
+        style: {
+          background: '#EF4444',
+          color: '#fff',
+          padding: '16px',
+          borderRadius: '8px',
+        },
+      });
+    } finally {
+      setIsNotifying(false);
+    }
+  };
+
+  const calculateMonthlyRevenue = (month: number, year: number) => {
+    return membershipEntries
+      .filter((e) => {
+        const d = new Date(e.date);
+        return d.getFullYear() === year && d.getMonth() === month && e.paymentStatus === 'confirmed';
+      })
+      .reduce((sum, e) => sum + (e.amount || 0), 0);
+  };
+
+  const calculateMonthlyRevenueBreakdown = (year: number) => {
+    const monthlyRevenue: Record<string, number> = {};
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    // Calculate revenue for each month
+    months.forEach((month, index) => {
+      monthlyRevenue[month] = calculateMonthlyRevenue(index, year);
+    });
+
+    return monthlyRevenue;
+  };
+
+  const calculateYearlyRevenue = (year: number) => {
+    return membershipEntries
+      .filter((e) => {
+        const d = new Date(e.date);
+        return d.getFullYear() === year && e.paymentStatus === 'confirmed';
+      })
+      .reduce((sum, e) => sum + (e.amount || 0), 0);
+  };
+
+  const calculateRevenueByPlan = (year?: number) => {
+    const planRevenue: Record<string, number> = {
+      '1month': 0,
+      '2month': 0,
+      '3month': 0,
+      '6month': 0,
+      'yearly': 0
+    };
+
+    membershipEntries
+      .filter((e) => {
+        if (e.paymentStatus !== 'confirmed') return false;
+        if (year !== undefined) {
+          const entryDate = new Date(e.date);
+          return entryDate.getFullYear() === year;
+        }
+        return true;
+      })
+      .forEach((e) => {
+        if (e.plan && planRevenue.hasOwnProperty(e.plan)) {
+          planRevenue[e.plan] = (planRevenue[e.plan] || 0) + (e.amount || 0);
+        }
+      });
+    return planRevenue;
+  };
+
+  const getPlanDisplayName = (plan: string) => {
+    const planNames: Record<string, string> = {
+      '1month': '1 Month',
+      '2month': '2 Months',
+      '3month': '3 Months',
+      '6month': '6 Months',
+      'yearly': 'Yearly'
+    };
+    return planNames[plan] || plan;
+  };
+
+  const calculateTotalCashRevenue = (month: number, year: number) => {
+    return membershipEntries
+      .filter((e) => {
+        const d = new Date(e.date);
+        return d.getFullYear() === year && d.getMonth() === month && e.paymentStatus === 'confirmed' && e.paymentMode === 'cash';
+      })
+      .reduce((sum, e) => sum + (e.amount || 0), 0);
+  };
+
+  const calculateTotalOnlineRevenue = (month: number, year: number) => {
+    return membershipEntries
+      .filter((e) => {
+        const d = new Date(e.date);
+        return d.getFullYear() === year && d.getMonth() === month && e.paymentStatus === 'confirmed' && e.paymentMode === 'online';
+      })
+      .reduce((sum, e) => sum + (e.amount || 0), 0);
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 0
+    }).format(amount);
+  };
+
+  const getPhotoUrl = (photo: string) => {
+    if (!photo) return 'https://res.cloudinary.com/dovjfipbt/image/upload/v1744948014/default-avatar';
+    if (photo.startsWith('http')) return photo;
+    return `https://res.cloudinary.com/dovjfipbt/image/upload/${photo}`;
+  };
+
+  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    e.currentTarget.src = 'https://res.cloudinary.com/dovjfipbt/image/upload/v1744948014/default-avatar';
+  };
+
+  const deleteMember = async (userId: string) => {
+    try {
+      setIsDeleting(prev => ({ ...prev, [userId]: true }));
+      const token = sessionStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/users/${userId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete member');
+      }
+
+      setUsers(currentUsers => currentUsers.filter(u => u._id !== userId));
+      toast.success('Member deleted successfully', {
+        duration: 4000,
+        position: 'top-right',
+        style: {
+          background: '#10B981',
+          color: '#fff',
+          padding: '16px',
+          borderRadius: '8px',
+        },
+      });
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete member', {
+        duration: 4000,
+        position: 'top-right',
+        style: {
+          background: '#EF4444',
+          color: '#fff',
+          padding: '16px',
+          borderRadius: '8px',
+        },
+      });
+    } finally {
+      setIsDeleting(prev => ({ ...prev, [userId]: false }));
+    }
+  };
+
+  const getExpiringThisWeek = () => {
+    const today = new Date();
+    const nextWeek = new Date(today);
+    nextWeek.setDate(today.getDate() + 7);
+
+    return users.filter(user => {
+      const endDate = new Date(user.endDate);
+      return endDate >= today && endDate <= nextWeek;
+    }).length;
+  };
+
+  const handleDashboardCardClick = (tab: string) => {
+    setActiveSidebarSection('members');
+    setActiveTab(tab);
+  };
+
+  const handleLogout = () => {
+    // Show confirmation modal
+    setShowLogoutModal(true);
+  };
+
+  const confirmLogout = () => {
+    // Clear token and redirect to login
+    sessionStorage.removeItem('token');
+    toast.success('Logged out successfully');
+    navigate('/admin/login');
+    window.location.reload();
+  };
+
+  const UserViewModal: React.FC<{ user: User | null; onClose: () => void }> = ({ user, onClose }) => {
+    if (!user) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 animate-fadeIn overflow-y-auto">
+        <div className="bg-white rounded-xl shadow-2xl p-3 sm:p-6 max-w-4xl w-[95%] sm:w-full mx-auto my-2 sm:my-8 transform transition-all duration-300 animate-slideIn">
+          <div className="flex justify-between items-center mb-3 sm:mb-6">
+            <div className="flex items-center space-x-2">
+              <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-full bg-yellow-100 flex items-center justify-center">
+                <Users className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-600" />
+              </div>
+              <h2 className="text-base sm:text-xl font-bold text-gray-800">Member Details</h2>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 transition-colors duration-200"
+            >
+              <X className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 hover:text-gray-700" />
+            </button>
+          </div>
+
+          {/* Mobile Photo Section */}
+          <div className="md:hidden mb-4 sm:mb-6">
+            <div className="flex flex-col items-center">
+              <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-xl overflow-hidden border-2 sm:border-4 border-yellow-100 shadow-lg">
+                <img
+                  src={getPhotoUrl(user.photo)}
+                  alt={user.name}
+                  className="w-full h-full object-cover"
+                  onError={handleImageError}
+                />
+              </div>
+              <div className="mt-3 sm:mt-4 text-center">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-800">{user.name}</h3>
+                <p className="text-xs sm:text-sm text-gray-500">{user.email}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col md:flex-row gap-4 sm:gap-6 md:gap-8">
+            {/* Desktop Photo Section */}
+            <div className="hidden md:flex flex-col items-center flex-shrink-0">
+              <div className="w-32 h-32 sm:w-40 sm:h-40 rounded-xl overflow-hidden border-4 border-yellow-100 shadow-lg transform hover:scale-105 transition-transform duration-300">
+                <img
+                  src={getPhotoUrl(user.photo)}
+                  alt={user.name}
+                  className="w-full h-full object-cover"
+                  onError={handleImageError}
+                />
+              </div>
+              <div className="mt-4 text-center">
+                <h3 className="text-lg sm:text-xl font-semibold text-gray-800">{user.name}</h3>
+                <p className="text-sm text-gray-500">{user.email}</p>
+              </div>
+            </div>
+
+            <div className="flex-grow">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <div className="space-y-3 sm:space-y-4">
+                  <div className="bg-gray-50 p-3 rounded-lg hover:bg-gray-100 transition-colors duration-200">
+                    <label className="block text-xs sm:text-sm font-medium text-gray-500">Phone</label>
+                    <p className="mt-1 text-sm sm:text-base text-gray-900 flex items-center">
+                      <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                      </svg>
+                      {user.phone}
+                    </p>
+                  </div>
+                  {user.address && (
+                    <div className="bg-gray-50 p-3 rounded-lg hover:bg-gray-100 transition-colors duration-200 sm:col-span-2">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-500">Address</label>
+                      <p className="mt-1 text-sm sm:text-base text-gray-900 flex items-start">
+                        <svg className="w-4 h-4 mr-2 text-gray-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <span className="break-words">{user.address}</span>
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3 sm:space-y-4">
+                  <div className="bg-gray-50 p-3 rounded-lg hover:bg-gray-100 transition-colors duration-200">
+                    <label className="block text-xs sm:text-sm font-medium text-gray-500">Membership Plan</label>
+                    <p className="mt-1 text-sm sm:text-base text-gray-900 flex items-center">
+                      <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                      </svg>
+                      {user.plan}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-lg hover:bg-gray-100 transition-colors duration-200">
+                    <label className="block text-xs sm:text-sm font-medium text-gray-500">Amount</label>
+                    <p className="mt-1 text-sm sm:text-base text-gray-900 flex items-center">
+                      <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      {getPlanAmountDisplay(user.plan)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-4 sm:mt-6">
+            <div className="bg-gray-50 p-3 rounded-lg hover:bg-gray-100 transition-colors duration-200">
+              <label className="block text-xs sm:text-sm font-medium text-gray-500">Payment Method</label>
+              <div className="mt-1 flex items-center">
+                <span className={`px-2 py-1 sm:px-3 sm:py-1 rounded-full text-xs sm:text-sm font-medium ${user.paymentMethod === 'online'
+                  ? 'bg-blue-100 text-blue-800'
+                  : 'bg-green-100 text-green-800'
+                  }`}>
+                  {user.paymentMethod === 'online' ? 'Online Payment' : 'Cash Payment'}
+                </span>
+              </div>
+            </div>
+            <div className="bg-gray-50 p-3 rounded-lg hover:bg-gray-100 transition-colors duration-200">
+              <label className="block text-xs sm:text-sm font-medium text-gray-500">Payment Status</label>
+              <div className="mt-1">
+                <span className={`px-2 py-1 sm:px-3 sm:py-1 rounded-full text-xs sm:text-sm font-medium ${user.paymentStatus === 'confirmed'
+                  ? 'bg-green-100 text-green-800'
+                  : 'bg-yellow-100 text-yellow-800'
+                  }`}>
+                  {user.paymentStatus === 'confirmed' ? 'Confirmed' : 'Pending'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-4 sm:mt-6">
+            <div className="bg-gray-50 p-3 rounded-lg hover:bg-gray-100 transition-colors duration-200">
+              <label className="block text-xs sm:text-sm font-medium text-gray-500">Start Date</label>
+              <p className="mt-1 text-sm sm:text-base text-gray-900 flex items-center">
+                <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                {new Date(user.startDate).toLocaleDateString()}
+              </p>
+            </div>
+            <div className="bg-gray-50 p-3 rounded-lg hover:bg-gray-100 transition-colors duration-200">
+              <label className="block text-xs sm:text-sm font-medium text-gray-500">End Date</label>
+              <p className="mt-1 text-sm sm:text-base text-gray-900 flex items-center">
+                <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                {new Date(user.endDate).toLocaleDateString()}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-4 sm:mt-6">
+            <div className="bg-gray-50 p-3 rounded-lg hover:bg-gray-100 transition-colors duration-200">
+              <label className="block text-xs sm:text-sm font-medium text-gray-500">Renewals</label>
+              <div className="mt-1 flex items-center">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                  {user.renewalCount || 0}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {user.renewals && user.renewals.length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">Subscription History</h3>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">Previous Plan</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">New Plan</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">Start Date</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">End Date</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">Payment Method</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">Previous Amount</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">New Amount</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">Renewed At</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100">
+                    {user.renewals.map((renewal, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="px-3 py-2">
+                          <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                            {renewal.previousPlan}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
+                            {renewal.plan}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">{new Date(renewal.startDate).toLocaleDateString()}</td>
+                        <td className="px-3 py-2">{new Date(renewal.endDate).toLocaleDateString()}</td>
+                        <td className="px-3 py-2 capitalize">{renewal.paymentMethod}</td>
+                        <td className="px-3 py-2">₹{renewal.previousAmount.toLocaleString()}</td>
+                        <td className="px-3 py-2">₹{renewal.newAmount.toLocaleString()}</td>
+                        <td className="px-3 py-2">{renewal.renewedAt ? new Date(renewal.renewedAt).toLocaleString() : '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const EditUserModal: React.FC<{ user: User | null; onClose: () => void; onSave: (updatedUser: User) => void }> = ({ user, onClose, onSave }) => {
+    const [editedUser, setEditedUser] = useState<User | null>(user);
+    const [isSaving, setIsSaving] = useState(false);
+
+    // Helper function to get months from plan type
+    const getPlanMonths = (plan: string): number => {
+      const planToMonths: Record<string, number> = {
+        '1month': 1,
+        '2month': 2,
+        '3month': 3,
+        '6month': 6,
+        'yearly': 12
+      };
+      return planToMonths[plan] || 1;
+    };
+
+    // Helper function to calculate end date from start date and plan
+    const calculateEndDate = (startDate: string, plan: string): string => {
+      if (!startDate) return '';
+      try {
+        const start = new Date(startDate);
+        if (isNaN(start.getTime())) return '';
+        const months = getPlanMonths(plan);
+        const end = addMonths(start, months);
+        return end.toISOString().split('T')[0];
+      } catch (error) {
+        console.error('Error calculating end date:', error);
+        return '';
+      }
+    };
+
+    // Handle start date change - automatically calculate end date
+    const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!editedUser) return;
+      const newStartDate = e.target.value;
+      const calculatedEndDate = calculateEndDate(newStartDate, editedUser.plan);
+      setEditedUser({
+        ...editedUser,
+        startDate: newStartDate,
+        endDate: calculatedEndDate || editedUser.endDate
+      } as User);
+    };
+
+    // Handle plan change - recalculate end date if start date exists
+    const handlePlanChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      if (!editedUser) return;
+      const newPlan = e.target.value;
+      const calculatedEndDate = editedUser.startDate
+        ? calculateEndDate(editedUser.startDate, newPlan)
+        : editedUser.endDate;
+      setEditedUser({
+        ...editedUser,
+        plan: newPlan,
+        endDate: calculatedEndDate
+      } as User);
+    };
+
+    if (!editedUser) return null;
+
+    const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setIsSaving(true);
+      try {
+        const token = sessionStorage.getItem('token');
+        if (!token) throw new Error('No authentication token found');
+
+        const response = await fetch(`${API_BASE_URL}/api/users/${editedUser._id}`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(editedUser)
+        });
+
+        if (!response.ok) throw new Error('Failed to update user');
+
+        const data = await response.json();
+        if (data.status === 'success') {
+          onSave(editedUser);
+          toast.success('User updated successfully!');
+          onClose();
+        }
+      } catch (error: any) {
+        toast.error(error.message || 'Failed to update user');
+      } finally {
+        setIsSaving(false);
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-4 sm:p-6 w-full max-w-md sm:max-w-2xl mx-2 my-4 sm:mx-4 sm:my-8 shadow-xl overflow-y-auto max-h-screen">
+          <div className="flex justify-between items-center mb-4 sm:mb-6">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Edit Member</h2>
+            <button
+              onClick={onClose}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+              <div className="min-w-0">
+                <label className="block text-sm font-medium text-gray-700">Name</label>
+                <input
+                  type="text"
+                  value={editedUser.name}
+                  onChange={(e) => setEditedUser({ ...editedUser, name: e.target.value })}
+                  className="mt-1 block w-full min-w-0 px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 text-base"
+                />
+              </div>
+              <div className="min-w-0">
+                <label className="block text-sm font-medium text-gray-700">Email</label>
+                <input
+                  type="email"
+                  value={editedUser.email}
+                  onChange={(e) => setEditedUser({ ...editedUser, email: e.target.value })}
+                  className="mt-1 block w-full min-w-0 px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 text-base"
+                />
+              </div>
+              <div className="min-w-0">
+                <label className="block text-sm font-medium text-gray-700">Phone</label>
+                <input
+                  type="tel"
+                  value={editedUser.phone}
+                  onChange={(e) => setEditedUser({ ...editedUser, phone: e.target.value })}
+                  className="mt-1 block w-full min-w-0 px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 text-base"
+                />
+              </div>
+              <div className="min-w-0 sm:col-span-2">
+                <label className="block text-sm font-medium text-gray-700">Address</label>
+                <textarea
+                  value={editedUser.address || ''}
+                  onChange={(e) => setEditedUser({ ...editedUser, address: e.target.value })}
+                  rows={3}
+                  className="mt-1 block w-full min-w-0 px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 text-base"
+                  placeholder="Enter address"
+                />
+              </div>
+              <div className="min-w-0">
+                <label className="block text-sm font-medium text-gray-700">Plan</label>
+                <select
+                  value={editedUser.plan}
+                  onChange={handlePlanChange}
+                  className="mt-1 block w-full min-w-0 px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 text-base"
+                >
+                  <option value="1month">1 Month</option>
+                  <option value="2month">2 Months</option>
+                  <option value="3month">3 Months</option>
+                  <option value="6month">6 Months</option>
+                  <option value="yearly">Yearly</option>
+                </select>
+              </div>
+              <div className="min-w-0">
+                <label className="block text-sm font-medium text-gray-700">Payment Status</label>
+                <select
+                  value={editedUser.paymentStatus}
+                  onChange={(e) => setEditedUser({ ...editedUser, paymentStatus: e.target.value })}
+                  className="mt-1 block w-full min-w-0 px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 text-base"
+                >
+                  <option value="pending">Pending</option>
+                  <option value="confirmed">Confirmed</option>
+                </select>
+              </div>
+              <div className="min-w-0">
+                <label className="block text-sm font-medium text-gray-700">Payment Method</label>
+                <select
+                  value={editedUser.paymentMethod}
+                  onChange={(e) => setEditedUser({ ...editedUser, paymentMethod: e.target.value })}
+                  className="mt-1 block w-full min-w-0 px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 text-base"
+                >
+                  <option value="cash">Cash</option>
+                  <option value="online">Online</option>
+                </select>
+              </div>
+              <div className="min-w-0">
+                <label className="block text-sm font-medium text-gray-700">Start Date</label>
+                <input
+                  type="date"
+                  value={editedUser.startDate ? editedUser.startDate.slice(0, 10) : ''}
+                  onChange={handleStartDateChange}
+                  className="mt-1 block w-full min-w-0 px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 text-base"
+                />
+              </div>
+              <div className="min-w-0">
+                <label className="block text-sm font-medium text-gray-700">End Date</label>
+                <input
+                  type="date"
+                  value={editedUser.endDate ? editedUser.endDate.slice(0, 10) : ''}
+                  onChange={e => setEditedUser({ ...editedUser, endDate: e.target.value })}
+                  className="mt-1 block w-full min-w-0 px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 text-base"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row justify-end gap-3 mt-4 sm:mt-6">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 w-full sm:w-auto"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSaving}
+                className={`px-4 py-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 w-full sm:w-auto flex items-center gap-2 ${isSaving ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+              >
+                {isSaving && (
+                  <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                )}
+                {isSaving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
+  const handleRenewalApproval = async (userId: string) => {
+    try {
+      setLoadingStates(prev => ({ ...prev, [userId]: true }));
+      const token = sessionStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/users/approve/${userId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to approve renewal');
+      }
+
+      const data = await response.json();
+
+      if (data.status === 'success') {
+        const user = users.find(u => u._id === userId);
+        const amount = user ? getPlanAmount(user.plan) : 0;
+        setUsers(users.map(user =>
+          user._id === userId
+            ? { ...user, paymentStatus: 'confirmed', subscriptionStatus: 'active' }
+            : user
+        ));
+        toast.success(`Renewal approved successfully! Amount: ₹${amount.toLocaleString()}`, {
+          duration: 4000,
+          position: 'top-right',
+          style: {
+            background: '#10B981',
+            color: '#fff',
+            padding: '16px',
+            borderRadius: '8px',
+          },
+        });
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to approve renewal', {
+        duration: 4000,
+        position: 'top-right',
+        style: {
+          background: '#EF4444',
+          color: '#fff',
+          padding: '16px',
+          borderRadius: '8px',
+        },
+      });
+    } finally {
+      setLoadingStates(prev => ({ ...prev, [userId]: false }));
+    }
+  };
+
+  const handleRenewalRejection = async (userId: string) => {
+    try {
+      setLoadingStates(prev => ({ ...prev, [userId]: true }));
+      const token = sessionStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/users/reject-renewal/${userId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to reject renewal');
+      }
+
+      const data = await response.json();
+
+      if (data.status === 'success') {
+        setUsers(users.map(user =>
+          user._id === userId
+            ? { ...user, subscriptionStatus: 'expired' }
+            : user
+        ));
+        toast.success('Renewal rejected successfully!', {
+          duration: 4000,
+          position: 'top-right',
+          style: {
+            background: '#10B981',
+            color: '#fff',
+            padding: '16px',
+            borderRadius: '8px',
+          },
+        });
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to reject renewal', {
+        duration: 4000,
+        position: 'top-right',
+        style: {
+          background: '#EF4444',
+          color: '#fff',
+          padding: '16px',
+          borderRadius: '8px',
+        },
+      });
+    } finally {
+      setLoadingStates(prev => ({ ...prev, [userId]: false }));
+    }
+  };
+
+  // Revenue helpers removed; revenue is computed from confirmed membership history entries only
+
+  return (
+    <div className="flex min-h-screen bg-gray-100">
+      {/* Mobile Menu Button */}
+      {/* Mobile edge handle instead of floating button */}
+      {!isSidebarOpen && (
+        <button
+          onClick={() => setIsSidebarOpen(true)}
+          aria-label="Open menu"
+          className="lg:hidden fixed top-1/2 -translate-y-1/2 left-0 z-40 h-12 w-6 bg-yellow-500 text-white shadow-md rounded-r-full flex items-center justify-center active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-400"
+        >
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      )}
+      {isSidebarOpen && (
+        <button
+          onClick={() => setIsSidebarOpen(false)}
+          aria-label="Close menu"
+          className="lg:hidden fixed top-4 left-4 z-40 p-2 rounded-full bg-white text-gray-700 shadow-md hover:bg-gray-100 active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-300"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      )}
+
+      {/* Sidebar */}
+      <div
+        className={`fixed lg:static inset-y-0 left-0 z-40 w-[260px] bg-white shadow-xl transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          } lg:translate-x-0 lg:w-64`}
+        style={{ maxHeight: '100vh' }}
+      >
+        <div className="h-full flex flex-col">
+          <div className="p-4 border-b flex justify-between items-center bg-white sticky top-0 z-10">
+            <h2 className="text-xl font-bold text-gray-800">Admin Panel</h2>
+            <button
+              onClick={() => setIsSidebarOpen(false)}
+              className="lg:hidden p-2 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-yellow-500 transition-all duration-200"
+            >
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
+          </div>
+
+          <nav className="flex-1 overflow-y-auto p-4">
+            <div className="space-y-1">
+              {/* Dashboard Section */}
+              <div>
+                <button
+                  onClick={() => {
+                    setActiveSidebarSection('dashboard');
+                    setIsSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${activeSidebarSection === 'dashboard'
+                    ? 'bg-yellow-50 text-yellow-600 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                >
+                  <LayoutDashboard className="w-5 h-5" />
+                  <span>Dashboard</span>
+                </button>
+              </div>
+
+              {/* Members Section */}
+              <div>
+                <button
+                  onClick={() => {
+                    setActiveSidebarSection('members');
+                    setIsSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${activeSidebarSection === 'members'
+                    ? 'bg-blue-50 text-blue-600 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                >
+                  <Users className="w-5 h-5" />
+                  <span>Members</span>
+                </button>
+              </div>
+
+              {/* Renewals Section */}
+              <div>
+                <button
+                  onClick={() => {
+                    setActiveSidebarSection('renewals');
+                    setIsSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${activeSidebarSection === 'renewals'
+                    ? 'bg-purple-50 text-purple-600 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                >
+                  <RefreshCw className="w-5 h-5" />
+                  <span>Renewals</span>
+                </button>
+              </div>
+
+              {/* Revenue Section */}
+              <div>
+                <button
+                  onClick={() => {
+                    setActiveSidebarSection('revenue');
+                    setIsSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${activeSidebarSection === 'revenue'
+                    ? 'bg-green-50 text-green-600 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                >
+                  <BarChart2 className="w-5 h-5" />
+                  <span>Revenue</span>
+                </button>
+              </div>
+
+              {/* Store Revenue Section */}
+              <div>
+                <button
+                  onClick={() => {
+                    setActiveSidebarSection('store-revenue');
+                    setIsSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${activeSidebarSection === 'store-revenue'
+                    ? 'bg-orange-50 text-orange-600 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                >
+                  <TrendingUp className="w-5 h-5" />
+                  <span>Store Revenue</span>
+                </button>
+              </div>
+
+              {/* Expenses Section */}
+              <div>
+                <button
+                  onClick={() => {
+                    setActiveSidebarSection('expenses');
+                    setIsSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${activeSidebarSection === 'expenses'
+                    ? 'bg-red-50 text-red-600 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                >
+                  <CreditCard className="w-5 h-5" />
+                  <span>Expenses</span>
+                </button>
+              </div>
+
+              {/* Verify Receipt Section */}
+              <div>
+                <button
+                  onClick={() => {
+                    setActiveSidebarSection('verify-receipt');
+                    setIsSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${activeSidebarSection === 'verify-receipt'
+                    ? 'bg-indigo-50 text-indigo-600 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                >
+                  <FileCheck className="w-5 h-5" />
+                  <span>Verify Receipt</span>
+                </button>
+              </div>
+
+              {/* Store Section */}
+              <div>
+                <button
+                  onClick={() => {
+                    setActiveSidebarSection('store');
+                    setIsSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${activeSidebarSection === 'store'
+                    ? 'bg-blue-50 text-blue-600 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                >
+                  <ShoppingBag className="w-5 h-5" />
+                  <span>Gym Store</span>
+                </button>
+              </div>
+
+              {/* Settings Section */}
+              <div>
+                <button
+                  onClick={() => {
+                    setActiveSidebarSection('settings');
+                    setIsSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${activeSidebarSection === 'settings'
+                    ? 'bg-gray-50 text-gray-600 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                >
+                  <Settings className="w-5 h-5" />
+                  <span>Settings</span>
+                </button>
+              </div>
+            </div>
+          </nav>
+          <div className="p-4 border-t bg-white">
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center justify-center space-x-2 px-4 py-3 rounded-lg bg-yellow-500 text-white font-semibold shadow hover:bg-yellow-600 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+            >
+              <LogOut className="w-5 h-5" />
+              <span>Logout</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Overlay for mobile */}
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden transition-opacity duration-300"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      {/* Main Content */}
+      <div className="flex-1 overflow-auto">
+        <div className="container mx-auto px-3 sm:px-4 py-4 lg:py-8">
+          {activeSidebarSection === 'dashboard' && (
+            <div className="bg-white rounded-lg shadow-xl p-0 md:p-0 w-full h-full min-h-[calc(100vh-8rem)] md:min-h-[calc(100vh-4rem)] flex flex-col">
+              <h2 className="text-xl md:text-2xl font-bold mb-4 md:mb-6 px-4 md:px-6 pt-4 md:pt-6">Admin Dashboard</h2>
+              <div className="flex-1 px-3 md:px-4 pb-4 md:pb-6">
+                <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 h-full">
+                  {/* Total Members */}
+                  <div
+                    onClick={() => handleDashboardCardClick('all')}
+                    className="group bg-blue-50 rounded-2xl shadow-md border border-blue-100 cursor-pointer flex flex-col justify-center items-center p-8 h-full w-full transform transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:bg-blue-100/80 active:scale-100">
+                    <Users className="text-blue-500 group-hover:text-blue-700 transition-colors duration-300 mb-2" size={40} />
+                    <span className="text-lg font-semibold mb-1">Total Members</span>
+                    <p className="text-4xl font-extrabold group-hover:text-blue-700 transition-colors duration-300">{users.length}</p>
+                  </div>
+                  {/* Active Members */}
+                  <div
+                    onClick={() => handleDashboardCardClick('all')}
+                    className="group bg-green-50 rounded-2xl shadow-md border border-green-100 cursor-pointer flex flex-col justify-center items-center p-8 h-full w-full transform transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:bg-green-100/80 active:scale-100">
+                    <CheckCircle className="text-green-500 group-hover:text-green-700 transition-colors duration-300 mb-2" size={40} />
+                    <span className="text-lg font-semibold mb-1">Active Members</span>
+                    <p className="text-4xl font-extrabold group-hover:text-green-700 transition-colors duration-300">{users.filter(u => u.paymentStatus === 'confirmed').length}</p>
+                  </div>
+                  {/* Pending Payments */}
+                  <div
+                    onClick={() => handleDashboardCardClick('pending')}
+                    className="group bg-yellow-50 rounded-2xl shadow-md border border-yellow-100 cursor-pointer flex flex-col justify-center items-center p-8 h-full w-full transform transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:bg-yellow-100/80 active:scale-100">
+                    <CreditCard className="text-yellow-500 group-hover:text-yellow-700 transition-colors duration-300 mb-2" size={40} />
+                    <span className="text-lg font-semibold mb-1">Pending Payments</span>
+                    <p className="text-4xl font-extrabold group-hover:text-yellow-700 transition-colors duration-300">{users.filter(u => u.paymentStatus === 'pending').length}</p>
+                  </div>
+                  {/* Expired Members */}
+                  <div
+                    onClick={() => handleDashboardCardClick('expired')}
+                    className="group bg-red-50 rounded-2xl shadow-md border border-red-100 cursor-pointer flex flex-col justify-center items-center p-8 h-full w-full transform transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:bg-red-100/80 active:scale-100">
+                    <Users className="text-red-500 group-hover:text-red-700 transition-colors duration-300 mb-2" size={40} />
+                    <span className="text-lg font-semibold mb-1">Expired Members</span>
+                    <p className="text-4xl font-extrabold group-hover:text-red-700 transition-colors duration-300">{users.filter(u => isSubscriptionExpired(u.endDate)).length}</p>
+                  </div>
+                  {/* Monthly Members */}
+                  <div
+                    onClick={() => handleDashboardCardClick('1month')}
+                    className="group bg-purple-50 rounded-2xl shadow-md border border-purple-100 cursor-pointer flex flex-col justify-center items-center p-8 h-full w-full transform transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:bg-purple-100/80 active:scale-100">
+                    <Calendar className="text-purple-500 group-hover:text-purple-700 transition-colors duration-300 mb-2" size={40} />
+                    <span className="text-lg font-semibold mb-1">Monthly Members</span>
+                    <p className="text-4xl font-extrabold group-hover:text-purple-700 transition-colors duration-300">{users.filter(u => u.plan === '1month').length}</p>
+                  </div>
+                  {/* 6 Months Members */}
+                  <div
+                    onClick={() => handleDashboardCardClick('6month')}
+                    className="group bg-indigo-50 rounded-2xl shadow-md border border-indigo-100 cursor-pointer flex flex-col justify-center items-center p-8 h-full w-full transform transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:bg-indigo-100/80 active:scale-100">
+                    <Calendar className="text-indigo-500 group-hover:text-indigo-700 transition-colors duration-300 mb-2" size={40} />
+                    <span className="text-lg font-semibold mb-1">6 Months Members</span>
+                    <p className="text-4xl font-extrabold group-hover:text-indigo-700 transition-colors duration-300">{users.filter(u => u.plan === '6month').length}</p>
+                  </div>
+                  {/* Yearly Members */}
+                  <div
+                    onClick={() => handleDashboardCardClick('yearly')}
+                    className="group bg-pink-50 rounded-2xl shadow-md border border-pink-100 cursor-pointer flex flex-col justify-center items-center p-8 h-full w-full transform transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:bg-pink-100/80 active:scale-100">
+                    <Calendar className="text-pink-500 group-hover:text-pink-700 transition-colors duration-300 mb-2" size={40} />
+                    <span className="text-lg font-semibold mb-1">Yearly Members</span>
+                    <p className="text-4xl font-extrabold group-hover:text-pink-700 transition-colors duration-300">{users.filter(u => u.plan === 'yearly').length}</p>
+                  </div>
+                  {/* Expiring This Week */}
+                  <div
+                    onClick={() => handleDashboardCardClick('all')}
+                    className="group bg-orange-50 rounded-2xl shadow-md border border-orange-100 cursor-pointer flex flex-col justify-center items-center p-8 h-full w-full transform transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:bg-orange-100/80 active:scale-100">
+                    <Calendar className="text-orange-500 group-hover:text-orange-700 transition-colors duration-300 mb-2" size={40} />
+                    <span className="text-lg font-semibold mb-1">Expiring This Week</span>
+                    <p className="text-4xl font-extrabold group-hover:text-orange-700 transition-colors duration-300">{getExpiringThisWeek()}</p>
+                  </div>
+                  {/* Net Profit (This Month) */}
+                  <div
+                    onClick={() => setActiveSidebarSection('expenses')}
+                    className={`group rounded-2xl shadow-md border cursor-pointer flex flex-col justify-center items-center p-8 h-full w-full transform transition-all duration-300 hover:scale-105 hover:shadow-2xl active:scale-100 ${(calculateMonthlyRevenue(new Date().getMonth(), new Date().getFullYear()) - monthlyExpenses) >= 0
+                      ? 'bg-emerald-50 border-emerald-100 hover:bg-emerald-100/80'
+                      : 'bg-rose-50 border-rose-100 hover:bg-rose-100/80'
+                      }`}>
+                    <BarChart2 className={`${(calculateMonthlyRevenue(new Date().getMonth(), new Date().getFullYear()) - monthlyExpenses) >= 0
+                      ? 'text-emerald-500 group-hover:text-emerald-700'
+                      : 'text-rose-500 group-hover:text-rose-700'
+                      } transition-colors duration-300 mb-2`} size={40} />
+                    <span className="text-lg font-semibold mb-1">Net Profit (This Month)</span>
+                    <p className={`text-4xl font-extrabold transition-colors duration-300 ${(calculateMonthlyRevenue(new Date().getMonth(), new Date().getFullYear()) - monthlyExpenses) >= 0
+                      ? 'text-emerald-600 group-hover:text-emerald-800'
+                      : 'text-rose-600 group-hover:text-rose-800'
+                      }`}>
+                      ₹{(calculateMonthlyRevenue(new Date().getMonth(), new Date().getFullYear()) - monthlyExpenses).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-8">
+                <h3 className="text-lg font-semibold mb-4">Monthly Revenue Breakdown - {selectedYear}</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {Object.entries(calculateMonthlyRevenueBreakdown(selectedYear)).map(([month, revenue]) => (
+                    <div key={month} className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-300">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-medium text-gray-800">{month}</h4>
+                        <CreditCard className="w-5 h-5 text-blue-500" />
+                      </div>
+                      <p className="text-2xl font-bold text-gray-900 mb-2">
+                        {formatCurrency(revenue)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeSidebarSection === 'members' && (
+            <div className="bg-white rounded-lg shadow-xl p-4 md:p-6">
+              <h2 className="text-xl md:text-2xl font-bold mb-4 md:mb-6 text-black">Members Management</h2>
+              {/* Search Bar */}
+              <div className="mb-4 md:mb-6 flex flex-col sm:flex-row items-center gap-3">
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  placeholder="Search by name, email, or phone..."
+                  className="w-full sm:w-80 px-3 py-2 rounded-lg border-2 border-gray-200 shadow-sm focus:ring-2 focus:ring-yellow-300 focus:border-yellow-500 transition-all"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2 mb-4 md:mb-6 overflow-x-auto pb-2">
+                <button
+                  className={`px-3 py-1.5 text-sm rounded-md whitespace-nowrap ${activeTab === 'all'
+                    ? 'bg-yellow-500 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  onClick={() => setActiveTab('all')}
+                >
+                  All Members
+                </button>
+                <button
+                  className={`px-3 py-1.5 text-sm rounded-md whitespace-nowrap ${activeTab === 'pending'
+                    ? 'bg-yellow-500 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  onClick={() => setActiveTab('pending')}
+                >
+                  Pending Payments
+                </button>
+                <button
+                  className={`px-3 py-1.5 text-sm rounded-md whitespace-nowrap ${activeTab === 'expired'
+                    ? 'bg-red-500 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  onClick={() => setActiveTab('expired')}
+                >
+                  Expired Members
+                </button>
+                <button
+                  className={`px-3 py-1.5 text-sm rounded-md whitespace-nowrap ${activeTab === '1month'
+                    ? 'bg-yellow-500 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  onClick={() => setActiveTab('1month')}
+                >
+                  1 Month Members
+                </button>
+                <button
+                  className={`px-3 py-1.5 text-sm rounded-md whitespace-nowrap ${activeTab === '2month'
+                    ? 'bg-yellow-500 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  onClick={() => setActiveTab('2month')}
+                >
+                  2 Months Members
+                </button>
+                <button
+                  className={`px-3 py-1.5 text-sm rounded-md whitespace-nowrap ${activeTab === '3month'
+                    ? 'bg-yellow-500 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  onClick={() => setActiveTab('3month')}
+                >
+                  3 Months Members
+                </button>
+                <button
+                  className={`px-3 py-1.5 text-sm rounded-md whitespace-nowrap ${activeTab === '6month'
+                    ? 'bg-yellow-500 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  onClick={() => setActiveTab('6month')}
+                >
+                  6 Months Members
+                </button>
+                <button
+                  className={`px-3 py-1.5 text-sm rounded-md whitespace-nowrap ${activeTab === 'yearly'
+                    ? 'bg-yellow-500 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  onClick={() => setActiveTab('yearly')}
+                >
+                  Yearly Members
+                </button>
+              </div>
+
+              <div className="flex justify-end gap-3 mb-4">
+                <button
+                  onClick={handleDownloadAllMembersPDF}
+                  disabled={isDownloadingPDF || users.length === 0}
+                  className={`px-4 py-2 text-sm rounded-md flex items-center gap-2 transition-all ${isDownloadingPDF || users.length === 0
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-green-600 hover:bg-green-700 text-white shadow-md hover:shadow-lg transform hover:-translate-y-0.5'
+                    }`}
+                >
+                  {isDownloadingPDF ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4" />
+                      Download PDF Report
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={fetchUsers}
+                  disabled={isRefreshing}
+                  className={`px-3 py-1.5 text-sm rounded-md btn-primary flex items-center ${isRefreshing ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                >
+                  {isRefreshing ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Refreshing...
+                    </>
+                  ) : (
+                    <>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-refresh-cw mr-1"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.75L3 8" /><path d="M3 3v5h5" /><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.75L21 16" /><path d="M21 21v-5h-5" /></svg>
+                      Refresh Data
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <div className="block md:hidden">
+                <div className="space-y-4">
+                  {filteredUsers().map((user) => (
+                    <div
+                      key={user._id}
+                      className={`bg-white rounded-lg shadow-md p-4 border-l-4 ${user.paymentStatus === 'pending' ? 'border-yellow-400' : 'border-green-400'
+                        }`}
+                    >
+                      <div className="flex items-center mb-3">
+                        <img
+                          className="h-12 w-12 rounded-full object-cover mr-3"
+                          src={getPhotoUrl(user.photo)}
+                          alt={user.name}
+                          onError={handleImageError}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-medium text-gray-900 truncate">{user.name}</h3>
+                          <p className="text-sm text-gray-500 truncate">{user.email}</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 mb-3">
+                        <div>
+                          <p className="text-xs text-gray-500">Plan</p>
+                          <p className="font-medium truncate">{user.plan}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">Amount</p>
+                          <p className="font-medium truncate">{getPlanAmountDisplay(user.plan)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">Payment Method</p>
+                          <p className="font-medium capitalize truncate">{user.paymentMethod}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">Status</p>
+                          <span className={`inline-flex px-2 py-0.5 text-xs rounded-full ${user.paymentStatus === 'confirmed'
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-yellow-100 text-yellow-800'
+                            }`}>
+                            {user.paymentStatus === 'confirmed' ? 'Confirmed' : 'Pending'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {user.paymentStatus === 'pending' && (
+                          <button
+                            onClick={() => showConfirm('approve', user._id, `Approve payment for ${user.name}?`)}
+                            disabled={loadingStates[user._id]}
+                            title="Approve payment"
+                            aria-label="Approve payment"
+                            className={`text-xs btn-primary p-2 rounded-full flex items-center justify-center ${loadingStates[user._id] ? 'opacity-50 cursor-not-allowed' : ''
+                              }`}
+                          >
+                            {loadingStates[user._id] ? (
+                              <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                            ) : (
+                              <CheckCircle className="w-4 h-4" />
+                            )}
+                          </button>
+                        )}
+                        {user.paymentStatus === 'confirmed' && (
+                          <>
+                            <button
+                              onClick={() => {
+                                const previewUrl = `${API_BASE_URL}/api/receipt/preview/${user._id}`;
+                                window.open(previewUrl, '_blank');
+                              }}
+                              title="Preview Receipt"
+                              aria-label="Preview Receipt"
+                              className="text-xs bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-full flex items-center justify-center transition-colors duration-200"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const response = await fetch(`${API_BASE_URL}/api/receipt/download/${user._id}`);
+                                  if (!response.ok) throw new Error('Failed to download receipt');
+                                  const blob = await response.blob();
+                                  const url = window.URL.createObjectURL(blob);
+                                  const link = document.createElement('a');
+                                  link.href = url;
+                                  link.download = `receipt-${user._id}.pdf`;
+                                  document.body.appendChild(link);
+                                  link.click();
+                                  link.remove();
+                                  window.URL.revokeObjectURL(url);
+                                  toast.success('Receipt downloaded successfully!');
+                                } catch (error: any) {
+                                  toast.error(error.message || 'Failed to download receipt');
+                                }
+                              }}
+                              title="Download Receipt"
+                              aria-label="Download Receipt"
+                              className="text-xs bg-green-500 hover:bg-green-600 text-white p-2 rounded-full flex items-center justify-center transition-colors duration-200"
+                            >
+                              <Download className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                        {isSubscriptionExpired(user.endDate) && (
+                          <button
+                            onClick={() => {
+                              setSelectedUserForNotification(user);
+                              setShowNotificationModal(true);
+                            }}
+                            disabled={isNotifying && selectedUserForNotification?._id === user._id}
+                            title="Notify member"
+                            aria-label="Notify member"
+                            className={`text-xs bg-purple-500 text-white p-2 rounded-full flex items-center justify-center ${isNotifying && selectedUserForNotification?._id === user._id ? 'opacity-50 cursor-not-allowed' : ''
+                              }`}
+                          >
+                            {isNotifying && selectedUserForNotification?._id === user._id ? (
+                              <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                            ) : (
+                              <Bell className="w-4 h-4" />
+                            )}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setSelectedUser(user)}
+                          title="View"
+                          aria-label="View"
+                          className="text-xs btn-primary p-2 rounded-full flex items-center justify-center transition-colors duration-200"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingUser(user);
+                            setIsEditing(true);
+                          }}
+                          title="Edit"
+                          aria-label="Edit"
+                          className="text-xs btn-primary p-2 rounded-full flex items-center justify-center"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => showConfirm('delete', user._id, `Delete member ${user.name}? This cannot be undone.`)}
+                          disabled={isDeleting[user._id]}
+                          title="Delete"
+                          aria-label="Delete"
+                          className={`text-xs bg-red-500 hover:bg-red-600 text-white p-2 rounded-full flex items-center justify-center transition-colors duration-200 ${isDeleting[user._id] ? 'opacity-50 cursor-not-allowed' : ''
+                            }`}
+                        >
+                          {isDeleting[user._id] ? (
+                            <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                          ) : (
+                            <Trash className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="hidden md:block overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Member
+                      </th>
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Plan & Amount
+                      </th>
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Payment Method
+                      </th>
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Renewals
+                      </th>
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Membership Validity
+                      </th>
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredUsers().map((user) => (
+                      <tr key={user._id} className={
+                        user.paymentStatus === 'pending' ? 'bg-yellow-50' : ''
+                      }>
+                        <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div className="h-10 w-10 flex-shrink-0">
+                              <img
+                                className="h-10 w-10 rounded-full object-cover"
+                                src={getPhotoUrl(user.photo)}
+                                alt={user.name}
+                                onError={handleImageError}
+                              />
+                            </div>
+                            <div className="ml-4">
+                              <div className="text-sm font-medium text-gray-900 truncate">{user.name}</div>
+                              <div className="text-sm text-gray-500 truncate">{user.email}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">{user.plan}</div>
+                          <div className="text-sm text-gray-500">{getPlanAmountDisplay(user.plan)}</div>
+                        </td>
+                        <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                          <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${user.paymentMethod === 'online' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+                            }`}>
+                            {user.paymentMethod === 'online' ? 'Online Payment' : 'Cash Payment'}
+                          </span>
+                        </td>
+                        <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                          <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${user.paymentStatus === 'confirmed'
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-yellow-100 text-yellow-800'
+                            }`}>
+                            {user.paymentStatus === 'confirmed' ? 'Confirmed' : 'Pending'}
+                          </span>
+                        </td>
+                        <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                              {user.renewalCount || 0}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                          {(() => {
+                            const today = new Date();
+                            const endDate = new Date(user.endDate);
+                            const daysLeft = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+                            if (daysLeft < 0) {
+                              return (
+                                <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                                  Expired
+                                </span>
+                              );
+                            } else if (daysLeft <= 7) {
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-orange-100 text-orange-800">
+                                    {daysLeft} days left
+                                  </span>
+                                  <span className="relative inline-flex" title="Subscription expiring soon - send notification">
+                                    <Bell className="w-4 h-4 text-orange-600 animate-pulse" />
+                                    <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-orange-500 ring-2 ring-white"></span>
+                                  </span>
+                                </div>
+                              );
+                            } else {
+                              return (
+                                <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                  Active ({daysLeft} days left)
+                                </span>
+                              );
+                            }
+                          })()}
+                        </td>
+                        <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm font-medium space-x-3">
+                          {user.paymentStatus === 'pending' && (
+                            <button
+                              onClick={() => showConfirm('approve', user._id, `Approve payment for ${user.name}?`)}
+                              disabled={loadingStates[user._id]}
+                              title="Approve payment"
+                              aria-label="Approve payment"
+                              className={`text-green-600 hover:text-green-900 inline-flex items-center justify-center p-2 rounded-full ${loadingStates[user._id] ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
+                            >
+                              {loadingStates[user._id] ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <CheckCircle className="w-4 h-4" />
+                              )}
+                            </button>
+                          )}
+                          {user.paymentStatus === 'confirmed' && (
+                            <>
+                              <button
+                                onClick={() => {
+                                  const previewUrl = `${API_BASE_URL}/api/receipt/preview/${user._id}`;
+                                  window.open(previewUrl, '_blank');
+                                }}
+                                title="Preview Receipt"
+                                aria-label="Preview Receipt"
+                                className="text-blue-600 hover:text-blue-800 inline-flex items-center justify-center p-2 rounded-full transition-colors duration-200"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    const response = await fetch(`${API_BASE_URL}/api/receipt/download/${user._id}`);
+                                    if (!response.ok) throw new Error('Failed to download receipt');
+                                    const blob = await response.blob();
+                                    const url = window.URL.createObjectURL(blob);
+                                    const link = document.createElement('a');
+                                    link.href = url;
+                                    link.download = `receipt-${user._id}.pdf`;
+                                    document.body.appendChild(link);
+                                    link.click();
+                                    link.remove();
+                                    window.URL.revokeObjectURL(url);
+                                    toast.success('Receipt downloaded successfully!');
+                                  } catch (error: any) {
+                                    toast.error(error.message || 'Failed to download receipt');
+                                  }
+                                }}
+                                title="Download Receipt"
+                                aria-label="Download Receipt"
+                                className="text-green-600 hover:text-green-800 inline-flex items-center justify-center p-2 rounded-full transition-colors duration-200"
+                              >
+                                <Download className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
+                          {isSubscriptionExpiring(user.endDate) && (
+                            <button
+                              onClick={() => {
+                                setSelectedUserForNotification(user);
+                                setShowNotificationModal(true);
+                              }}
+                              title="Notify member about expiring subscription"
+                              aria-label="Notify member about expiring subscription"
+                              className="text-orange-600 hover:text-orange-900 inline-flex items-center justify-center p-2 rounded-full relative"
+                            >
+                              <span className="relative">
+                                <Bell className="w-4 h-4" />
+                                <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-orange-500 ring-2 ring-white"></span>
+                              </span>
+                            </button>
+                          )}
+                          {isSubscriptionExpired(user.endDate) && (
+                            <button
+                              onClick={() => {
+                                setSelectedUserForNotification(user);
+                                setShowNotificationModal(true);
+                              }}
+                              title="Notify member"
+                              aria-label="Notify member"
+                              className="text-purple-600 hover:text-purple-900 inline-flex items-center justify-center p-2 rounded-full"
+                            >
+                              <Bell className="w-4 h-4" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setSelectedUser(user)}
+                            title="View"
+                            aria-label="View"
+                            className="text-blue-600 hover:text-blue-800 inline-flex items-center justify-center p-2 rounded-full transition-colors duration-200"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setEditingUser(user);
+                              setIsEditing(true);
+                            }}
+                            title="Edit"
+                            aria-label="Edit"
+                            className="text-yellow-600 hover:text-yellow-900 inline-flex items-center justify-center p-2 rounded-full"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => showConfirm('delete', user._id, `Delete member ${user.name}? This cannot be undone.`)}
+                            disabled={isDeleting[user._id]}
+                            title="Delete"
+                            aria-label="Delete"
+                            className={`text-red-600 hover:text-red-900 inline-flex items-center justify-center p-2 rounded-full ${isDeleting[user._id] ? 'opacity-50 cursor-not-allowed' : ''
+                              }`}
+                          >
+                            {isDeleting[user._id] ? (
+                              <>
+                                <svg className="animate-spin -ml-1 mr-1 h-4 w-4 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                              </>
+                            ) : (
+                              <Trash className="w-4 h-4" />
+                            )}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {activeSidebarSection === 'renewals' && (
+            <div className="bg-white rounded-lg shadow-xl p-4 md:p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold">Renewal Requests</h2>
+                <button
+                  onClick={fetchUsers}
+                  disabled={isRefreshing}
+                  className={`flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors duration-200 ${isRefreshing ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                >
+                  {isRefreshing ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-5 h-5" />
+                  )}
+                  {isRefreshing ? 'Refreshing...' : 'Refresh'}
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Member
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Current Plan
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Requested Plan
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Expiry Date
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Request Date
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {users
+                      .filter(user => user.subscriptionStatus === 'pending' && user.paymentStatus === 'pending')
+                      .map((user) => (
+                        <tr key={user._id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center">
+                              <div className="h-10 w-10 flex-shrink-0">
+                                <img
+                                  className="h-10 w-10 rounded-full object-cover"
+                                  src={user.photo || "https://res.cloudinary.com/dovjfipbt/image/upload/v1744948014/default-avatar"}
+                                  alt={user.name}
+                                />
+                              </div>
+                              <div className="ml-4">
+                                <div className="text-sm font-medium text-gray-900">{user.name}</div>
+                                <div className="text-sm text-gray-500">{user.email}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                              {user.plan.replace('month', ' Month').replace('yearly', ' Year')}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                              {user.plan.replace('month', ' Month').replace('yearly', ' Year')}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {new Date(user.endDate).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {new Date(user.startDate).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-3">
+                            <button
+                              onClick={() => handleRenewalApproval(user._id)}
+                              disabled={loadingStates[user._id]}
+                              title="Approve renewal"
+                              aria-label="Approve renewal"
+                              className={`text-green-600 hover:text-green-900 inline-flex items-center justify-center p-2 rounded-full ${loadingStates[user._id] ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
+                            >
+                              {loadingStates[user._id] ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <CheckCircle className="w-4 h-4" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleRenewalRejection(user._id)}
+                              disabled={loadingStates[user._id]}
+                              title="Reject renewal"
+                              aria-label="Reject renewal"
+                              className={`text-red-600 hover:text-red-900 inline-flex items-center justify-center p-2 rounded-full ${loadingStates[user._id] ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
+                            >
+                              {loadingStates[user._id] ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Trash className="w-4 h-4" />
+                              )}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {users.filter(user => user.subscriptionStatus === 'pending' && user.paymentStatus === 'pending').length === 0 && (
+                <div className="mt-4 text-center text-gray-500">
+                  No renewal requests found
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeSidebarSection === 'revenue' && (
+            <div className="bg-white rounded-lg shadow-xl p-4 md:p-6">
+              <h2 className="text-2xl font-bold mb-6">Revenue Analytics</h2>
+
+              {/* Year and Month Selection */}
+              <div className="flex flex-wrap gap-4 mb-6">
+                <div>
+                  <label htmlFor="month-select" className="block text-sm font-medium text-gray-700">Select Month</label>
+                  <select
+                    id="month-select"
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                    className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm rounded-md"
+                  >
+                    {[...Array(12)].map((_, i) => (
+                      <option key={i} value={i}>
+                        {new Date(0, i).toLocaleString('default', { month: 'long' })}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="year-select" className="block text-sm font-medium text-gray-700">Select Year</label>
+                  <select
+                    id="year-select"
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                    className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm rounded-md"
+                  >
+                    {[...Array(11)].map((_, i) => {
+                      const year = currentYear - 5 + i;
+                      return <option key={year} value={year}>{year}</option>;
+                    })}
+                  </select>
+                </div>
+              </div>
+
+              {/* Revenue Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                {/* Monthly Revenue Card */}
+                <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-300">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-800">Monthly Revenue</h3>
+                    <CreditCard className="w-6 h-6 text-emerald-500" />
+                  </div>
+                  <p className="text-3xl font-bold text-gray-900 mb-2">
+                    {formatCurrency(calculateMonthlyRevenue(selectedMonth, selectedYear))}
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    {new Date(selectedYear, selectedMonth).toLocaleString('default', { month: 'long' })} {selectedYear}
+                  </p>
+                </div>
+
+                {/* Yearly Revenue Card */}
+                <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-300">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-800">Yearly Revenue</h3>
+                    <CreditCard className="w-6 h-6 text-amber-500" />
+                  </div>
+                  <p className="text-3xl font-bold text-gray-900 mb-2">
+                    {formatCurrency(calculateYearlyRevenue(selectedYear))}
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    Total for {selectedYear}
+                  </p>
+                </div>
+
+                {/* Cash Revenue Card */}
+                <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-300">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-800">Cash Revenue</h3>
+                    <CreditCard className="w-6 h-6 text-green-500" />
+                  </div>
+                  <p className="text-3xl font-bold text-gray-900 mb-2">
+                    {formatCurrency(calculateTotalCashRevenue(selectedMonth, selectedYear))}
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    {new Date(selectedYear, selectedMonth).toLocaleString('default', { month: 'long' })} {selectedYear}
+                  </p>
+                </div>
+
+                {/* Online Revenue Card */}
+                <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-300">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-800">Online Revenue</h3>
+                    <CreditCard className="w-6 h-6 text-blue-500" />
+                  </div>
+                  <p className="text-3xl font-bold text-gray-900 mb-2">
+                    {formatCurrency(calculateTotalOnlineRevenue(selectedMonth, selectedYear))}
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    {new Date(selectedYear, selectedMonth).toLocaleString('default', { month: 'long' })} {selectedYear}
+                  </p>
+                </div>
+              </div>
+
+              {/* Monthly Revenue Breakdown */}
+              <div className="mt-8">
+                <h3 className="text-lg font-semibold mb-4">Monthly Revenue Breakdown</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {Object.entries(calculateMonthlyRevenueBreakdown(selectedYear)).map(([month, revenue]) => (
+                    <div key={month} className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-300">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-medium text-gray-800">{month}</h4>
+                        <CreditCard className="w-5 h-5 text-blue-500" />
+                      </div>
+                      <p className="text-2xl font-bold text-gray-900 mb-2">
+                        {formatCurrency(revenue)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Monthly Cash vs Online Revenue Breakdown */}
+              <div className="mt-8">
+                <h3 className="text-lg font-semibold mb-4">Monthly Cash vs Online Revenue</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {Object.entries(calculateMonthlyRevenueBreakdown(selectedYear)).map(([month, _]) => {
+                    const monthIndex = new Date(`${month} 1, 2000`).getMonth();
+                    const cashRevenue = calculateTotalCashRevenue(monthIndex, selectedYear);
+                    const onlineRevenue = calculateTotalOnlineRevenue(monthIndex, selectedYear);
+                    const totalRevenue = cashRevenue + onlineRevenue;
+
+                    return (
+                      <div key={month} className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-300">
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className="font-medium text-gray-800">{month}</h4>
+                          <div className="flex space-x-2">
+                            <CreditCard className="w-5 h-5 text-green-500" />
+                            <CreditCard className="w-5 h-5 text-blue-500" />
+                          </div>
+                        </div>
+
+                        {/* Cash Revenue */}
+                        <div className="mb-4">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-sm text-gray-600">Cash Revenue</span>
+                            <span className="text-sm font-medium text-gray-900">{formatCurrency(cashRevenue)}</span>
+                          </div>
+                        </div>
+
+                        {/* Online Revenue */}
+                        <div>
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-sm text-gray-600">Online Revenue</span>
+                            <span className="text-sm font-medium text-gray-900">{formatCurrency(onlineRevenue)}</span>
+                          </div>
+                        </div>
+
+                        {/* Total Monthly Revenue */}
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-medium text-gray-800">Total Revenue</span>
+                            <span className="text-lg font-bold text-gray-900">{formatCurrency(totalRevenue)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Revenue by Plan Type */}
+              <div className="mt-8">
+                <h3 className="text-lg font-semibold mb-4">Revenue by Plan Type - {selectedYear}</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                  {Object.entries(calculateRevenueByPlan(selectedYear)).map(([plan, revenue]) => {
+                    const planColors: Record<string, string> = {
+                      '1month': 'bg-blue-50 border-blue-200 text-blue-700',
+                      '2month': 'bg-green-50 border-green-200 text-green-700',
+                      '3month': 'bg-yellow-50 border-yellow-200 text-yellow-700',
+                      '6month': 'bg-purple-50 border-purple-200 text-purple-700',
+                      'yearly': 'bg-orange-50 border-orange-200 text-orange-700'
+                    };
+                    const iconColors: Record<string, string> = {
+                      '1month': 'text-blue-500',
+                      '2month': 'text-green-500',
+                      '3month': 'text-yellow-500',
+                      '6month': 'text-purple-500',
+                      'yearly': 'text-orange-500'
+                    };
+
+                    return (
+                      <div
+                        key={plan}
+                        className={`p-6 rounded-lg border-2 shadow-sm hover:shadow-md transition-all duration-300 ${planColors[plan] || 'bg-gray-50 border-gray-200 text-gray-700'}`}
+                      >
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className="font-semibold text-lg">{getPlanDisplayName(plan)}</h4>
+                          <CreditCard className={`w-5 h-5 ${iconColors[plan] || 'text-gray-500'}`} />
+                        </div>
+                        <p className="text-2xl font-bold mb-2">
+                          {formatCurrency(revenue)}
+                        </p>
+                        <p className="text-xs opacity-75 mb-3">
+                          {selectedYear} Total
+                        </p>
+                        {/* Percentage of total revenue */}
+                        {(() => {
+                          const totalYearlyRevenue = calculateYearlyRevenue(selectedYear);
+                          const percentage = totalYearlyRevenue > 0
+                            ? ((revenue / totalYearlyRevenue) * 100).toFixed(1)
+                            : '0';
+                          return (
+                            <div className="mt-3 pt-3 border-t border-current border-opacity-20">
+                              <div className="flex justify-between items-center mb-2">
+                                <span className="text-xs opacity-75">Share</span>
+                                <span className="text-sm font-semibold">{percentage}%</span>
+                              </div>
+                              <div className="w-full bg-current bg-opacity-20 rounded-full h-2">
+                                <div
+                                  className="bg-current h-2 rounded-full transition-all duration-500"
+                                  style={{ width: `${percentage}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Summary Card */}
+                <div className="mt-6 bg-gradient-to-r from-yellow-50 to-amber-50 border-2 border-yellow-200 rounded-lg p-6 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-lg font-semibold text-gray-800 mb-1">Total Revenue by Plans ({selectedYear})</h4>
+                      <p className="text-3xl font-bold text-gray-900">
+                        {formatCurrency(
+                          Object.values(calculateRevenueByPlan(selectedYear)).reduce((sum, revenue) => sum + revenue, 0)
+                        )}
+                      </p>
+                    </div>
+                    <BarChart2 className="w-12 h-12 text-yellow-600" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeSidebarSection === 'verify-receipt' && (
+            <div className="bg-white rounded-lg shadow-xl p-4 md:p-6">
+              <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+                <FileCheck className="w-6 h-6" />
+                Verify Receipt
+              </h2>
+
+              <div className="space-y-6">
+                {/* Search Section */}
+                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-lg p-6">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-4">Search Receipt</h3>
+                  <div className="flex flex-col sm:flex-row gap-4">
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Receipt Number or User ID
+                      </label>
+                      <input
+                        type="text"
+                        value={receiptSearchQuery}
+                        onChange={(e) => setReceiptSearchQuery(e.target.value)}
+                        placeholder="Enter RCP-XXXXXXXX or User ID"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            handleVerifyReceipt();
+                          }
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <button
+                        onClick={handleVerifyReceipt}
+                        disabled={!receiptSearchQuery.trim() || isVerifyingReceipt}
+                        className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      >
+                        {isVerifyingReceipt ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Verifying...
+                          </>
+                        ) : (
+                          <>
+                            <FileCheck className="w-4 h-4" />
+                            Verify
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Verification Results */}
+                {receiptVerificationData && (
+                  <div className="space-y-4">
+                    {/* Verification Status */}
+                    <div className={`p-6 rounded-lg border-2 ${receiptVerificationData.verification?.isValid
+                      ? 'bg-green-50 border-green-200'
+                      : 'bg-red-50 border-red-200'
+                      }`}>
+                      <div className="flex items-center gap-3 mb-4">
+                        {receiptVerificationData.verification?.isValid ? (
+                          <CheckCircle className="w-8 h-8 text-green-600" />
+                        ) : (
+                          <X className="w-8 h-8 text-red-600" />
+                        )}
+                        <h3 className={`text-xl font-bold ${receiptVerificationData.verification?.isValid
+                          ? 'text-green-800'
+                          : 'text-red-800'
+                          }`}>
+                          {receiptVerificationData.verification?.isValid
+                            ? 'Receipt Verified Successfully'
+                            : 'Receipt Verification Failed'}
+                        </h3>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <span className="font-semibold text-gray-700">Receipt Number:</span>
+                          <span className="ml-2 font-mono text-gray-900">
+                            {receiptVerificationData.receipt?.receiptNumber}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="font-semibold text-gray-700">Member ID:</span>
+                          <span className="ml-2 font-mono text-gray-900">
+                            {receiptVerificationData.receipt?.memberId}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="font-semibold text-gray-700">Payment Date:</span>
+                          <span className="ml-2 text-gray-900">
+                            {new Date(receiptVerificationData.receipt?.paymentDate).toLocaleDateString('en-IN', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric'
+                            })}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="font-semibold text-gray-700">Amount:</span>
+                          <span className="ml-2 text-gray-900 font-semibold">
+                            ₹{receiptVerificationData.receipt?.amount?.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Customer Details */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+                      <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                        <Users className="w-5 h-5" />
+                        Customer Details
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Name:</span>
+                          <p className="text-gray-900 font-semibold">{receiptVerificationData.customer?.name}</p>
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Email:</span>
+                          <p className="text-gray-900">{receiptVerificationData.customer?.email}</p>
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Phone:</span>
+                          <p className="text-gray-900">{receiptVerificationData.customer?.phone}</p>
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Gender:</span>
+                          <p className="text-gray-900">{receiptVerificationData.customer?.gender}</p>
+                        </div>
+                        {receiptVerificationData.customer?.dob && (
+                          <div>
+                            <span className="text-sm font-medium text-gray-600">Date of Birth:</span>
+                            <p className="text-gray-900">
+                              {new Date(receiptVerificationData.customer.dob).toLocaleDateString('en-IN')}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Subscription Details */}
+                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-6">
+                      <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                        <CreditCard className="w-5 h-5" />
+                        Subscription Details
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Plan:</span>
+                          <p className="text-gray-900 font-semibold capitalize">
+                            {receiptVerificationData.subscription?.plan?.replace('month', ' Month').replace('yearly', 'Yearly')}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Payment Method:</span>
+                          <p className="text-gray-900 capitalize">
+                            {receiptVerificationData.subscription?.paymentMethod}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Start Date:</span>
+                          <p className="text-gray-900">
+                            {new Date(receiptVerificationData.subscription?.startDate).toLocaleDateString('en-IN', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric'
+                            })}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">End Date:</span>
+                          <p className="text-gray-900">
+                            {new Date(receiptVerificationData.subscription?.endDate).toLocaleDateString('en-IN', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric'
+                            })}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Payment Status:</span>
+                          <p className={`font-semibold ${receiptVerificationData.subscription?.paymentStatus === 'confirmed'
+                            ? 'text-green-600'
+                            : 'text-orange-600'
+                            }`}>
+                            {receiptVerificationData.subscription?.paymentStatus?.toUpperCase()}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Subscription Status:</span>
+                          <p className={`font-semibold ${receiptVerificationData.subscription?.subscriptionStatus === 'active'
+                            ? 'text-green-600'
+                            : receiptVerificationData.subscription?.subscriptionStatus === 'expired'
+                              ? 'text-red-600'
+                              : 'text-orange-600'
+                            }`}>
+                            {receiptVerificationData.subscription?.subscriptionStatus?.toUpperCase()}
+                          </p>
+                        </div>
+                        {receiptVerificationData.receipt?.transactionId && (
+                          <div className="md:col-span-2">
+                            <span className="text-sm font-medium text-gray-600">Transaction ID:</span>
+                            <p className="text-gray-900 font-mono">{receiptVerificationData.receipt.transactionId}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Verification Summary */}
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
+                      <h3 className="text-lg font-semibold text-gray-800 mb-4">Verification Summary</h3>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className={`w-5 h-5 ${receiptVerificationData.verification?.receiptMatchesCustomer
+                            ? 'text-green-600'
+                            : 'text-red-600'
+                            }`} />
+                          <span className="text-gray-700">
+                            Receipt matches customer details: {
+                              receiptVerificationData.verification?.receiptMatchesCustomer ? 'Yes' : 'No'
+                            }
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className={`w-5 h-5 ${receiptVerificationData.verification?.receiptMatchesSubscription
+                            ? 'text-green-600'
+                            : 'text-red-600'
+                            }`} />
+                          <span className="text-gray-700">
+                            Receipt matches subscription: {
+                              receiptVerificationData.verification?.receiptMatchesSubscription ? 'Yes' : 'No'
+                            }
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-500 mt-4">
+                          Verified at: {new Date(receiptVerificationData.verification?.verifiedAt).toLocaleString('en-IN')}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeSidebarSection === 'expenses' && (
+            <div className="bg-white rounded-lg shadow-xl p-4 md:p-6">
+              <Expenses
+                getRevenue={calculateMonthlyRevenue}
+              />
+            </div>
+          )}
+
+          {activeSidebarSection === 'settings' && (
+            <div className="bg-white rounded-lg shadow-xl p-4 md:p-6">
+              <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+                <Settings className="w-6 h-6" />
+                Settings
+              </h2>
+
+              {isLoadingSettings ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                </div>
+              ) : settings ? (
+                <div className="space-y-6">
+                  {/* Membership Plan Pricing */}
+                  <PlanPricingSection
+                    planPricing={settings.planPricing}
+                    onSave={(data) => handleSaveSettings('planPricing', data)}
+                    isSaving={isSavingSettings}
+                  />
+
+                  {/* Gym Information */}
+                  <GymInfoSection
+                    gymInfo={settings.gymInfo}
+                    onSave={(data) => handleSaveSettings('gymInfo', data)}
+                    isSaving={isSavingSettings}
+                  />
+
+                  {/* Offers on Plans */}
+                  <OffersSection
+                    offers={settings.offers || []}
+                    onSave={(data) => handleSaveSettings('offers', data)}
+                    isSaving={isSavingSettings}
+                  />
+                </div>
+              ) : (
+                <div className="text-center py-12 text-gray-500">
+                  Failed to load settings. Please try again.
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeSidebarSection === 'store' && (
+            <div className="bg-white rounded-lg shadow-xl p-4 md:p-6">
+              <StoreManagement />
+            </div>
+          )}
+
+          {activeSidebarSection === 'store-revenue' && (
+            <div className="bg-white rounded-lg shadow-xl p-4 md:p-6">
+              <StoreRevenue />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {selectedUser && (
+        <UserViewModal
+          user={selectedUser}
+          onClose={() => setSelectedUser(null)}
+        />
+      )}
+
+      {isEditing && editingUser && (
+        <EditUserModal
+          user={editingUser}
+          onClose={() => {
+            setIsEditing(false);
+            setEditingUser(null);
+          }}
+          onSave={(updatedUser) => {
+            setUsers(users.map(u => u._id === updatedUser._id ? updatedUser : u));
+            setIsEditing(false);
+            setEditingUser(null);
+          }}
+        />
+      )}
+      {showNotificationModal && selectedUserForNotification && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-xl">
+            <h2 className="text-xl font-bold mb-4 text-gray-800">
+              {isSubscriptionExpired(selectedUserForNotification.endDate)
+                ? 'Send Expiry Notification'
+                : 'Send Expiring Subscription Notification'}
+            </h2>
+            <p className="mb-6 text-gray-700">
+              {isSubscriptionExpired(selectedUserForNotification.endDate) ? (
+                <>
+                  Are you sure you want to notify <span className="font-semibold">{selectedUserForNotification.name}</span> ({selectedUserForNotification.email}) about their expired membership?
+                </>
+              ) : (
+                <>
+                  Are you sure you want to notify <span className="font-semibold">{selectedUserForNotification.name}</span> ({selectedUserForNotification.email}) that their membership expires in <span className="font-semibold text-orange-600">{getDaysLeft(selectedUserForNotification.endDate)} days</span>?
+                </>
+              )}
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowNotificationModal(false)}
+                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (isSubscriptionExpired(selectedUserForNotification.endDate)) {
+                    notifyExpiredMember(
+                      selectedUserForNotification._id,
+                      selectedUserForNotification.email,
+                      selectedUserForNotification.name
+                    );
+                  } else {
+                    notifyExpiringMember(
+                      selectedUserForNotification._id,
+                      selectedUserForNotification.email,
+                      selectedUserForNotification.name
+                    );
+                  }
+                }}
+                disabled={isNotifying}
+                className={`px-4 py-2 ${isSubscriptionExpired(selectedUserForNotification.endDate)
+                  ? 'bg-purple-600 hover:bg-purple-700'
+                  : 'bg-orange-600 hover:bg-orange-700'
+                  } text-white rounded-md flex items-center gap-2 ${isNotifying ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+              >
+                {isNotifying && (
+                  <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                )}
+                {isNotifying ? 'Sending...' : 'Send Notification'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Logout Confirmation Modal */}
+      {showLogoutModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-xl">
+            <div className="flex items-center mb-4">
+              <div className="w-12 h-12 rounded-full bg-yellow-100 flex items-center justify-center mr-4">
+                <LogOut className="w-6 h-6 text-yellow-600" />
+              </div>
+              <h2 className="text-xl font-bold text-gray-800">Confirm Logout</h2>
+            </div>
+            <p className="mb-6 text-gray-700">
+              Are you sure you want to logout? You will need to login again to access the admin panel.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowLogoutModal(false)}
+                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors duration-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmLogout}
+                className="px-4 py-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 transition-colors duration-200 flex items-center gap-2 font-semibold"
+              >
+                <LogOut className="w-4 h-4" />
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Confirm Popup */}
+      {confirmAction.visible && (
+        <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-6 md:bottom-6 z-50">
+          <div className="bg-white shadow-2xl border border-gray-200 rounded-xl p-4 w-full md:w-80 animate-slideIn">
+            <div className="flex items-start">
+              <div className={`mr-3 mt-0.5 w-6 h-6 rounded-full flex items-center justify-center ${confirmAction.action === 'delete' ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'
+                }`}>
+                {confirmAction.action === 'delete' ? (
+                  <Trash className="w-4 h-4" />
+                ) : (
+                  <CheckCircle className="w-4 h-4" />
+                )}
+              </div>
+              <div className="flex-1">
+                <p className="text-sm text-gray-800 font-medium mb-2">{confirmAction.message}</p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={handleConfirmCancel}
+                    className="px-3 py-1.5 text-sm border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmProceed}
+                    className={`px-3 py-1.5 text-sm rounded-md text-white ${confirmAction.action === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
+                      }`}
+                  >
+                    Confirm
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default AdminPanel;
