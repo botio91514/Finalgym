@@ -777,15 +777,19 @@ const scheduleSubscriptionCheck = () => {
 scheduleSubscriptionCheck();
 
 const PORT = process.env.PORT || 3000;
-console.log('Starting server...');
-console.log('Environment:', process.env.NODE_ENV);
-console.log('Port:', PORT);
-console.log('MongoDB URI exists:', !!process.env.MONGODB_URI);
 
-app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-  console.log(`✅ Server URL: http://localhost:${PORT}`);
-});
+// Only listen if the file is run directly (not imported as a module)
+if (require.main === module) {
+  console.log('Starting server...');
+  console.log('Environment:', process.env.NODE_ENV);
+  console.log('Port:', PORT);
+  console.log('MongoDB URI exists:', !!process.env.MONGODB_URI);
+
+  app.listen(PORT, () => {
+    console.log(`✅ Server running on port ${PORT}`);
+    console.log(`✅ Server URL: http://localhost:${PORT}`);
+  });
+}
 
 // Handle unhandled rejections
 process.on('unhandledRejection', (err) => {
@@ -793,3 +797,5 @@ process.on('unhandledRejection', (err) => {
   console.log(err.name, err.message);
   process.exit(1);
 });
+
+module.exports = app;
