@@ -19,13 +19,16 @@ import RenewalForm from './components/RenewalForm';
 import PaymentDetails from './components/PaymentDetails';
 
 
-// Define API base URL - make sure this matches your backend port
-// Define API base URL - allow environment variable override
-// Define API base URL - allow environment variable override
-// Ensure no trailing slash to prevent double slashes in API calls
+// Define API base URLs
+// Vercel is used as the primary backend for better performance and response times
+export const VERCEL_API_URL = 'https://finalgym-weld.vercel.app';
+// Render is used for heavy tasks like PDF generation that might time out on serverless functions
+export const RENDER_API_URL = 'https://gymbackend-uqt3.onrender.com';
+
 const getApiUrl = () => {
+  // Allow environment variable override, otherwise default to Vercel in production
   const url = import.meta.env.VITE_API_URL || (import.meta.env.PROD
-    ? 'https://gymbackend-uqt3.onrender.com'
+    ? VERCEL_API_URL
     : 'http://localhost:3000');
   return url.replace(/\/$/, '');
 };

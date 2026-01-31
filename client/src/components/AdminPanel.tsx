@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Calendar, CreditCard, CheckCircle, Eye, Edit, Trash, Bell, LayoutDashboard, RefreshCw, BarChart2, Settings, X, LogOut, Loader2, ChevronRight, Download, FileCheck, ShoppingBag, TrendingUp } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { API_BASE_URL } from '../App';
+import { API_BASE_URL, RENDER_API_URL } from '../App';
 import { useNavigate } from 'react-router-dom';
 import { apiClient, verifyAuth, getSettings, updateSettings, Settings as SettingsType, getExpenses } from '../utils/apiClient';
 import { addMonths } from 'date-fns';
@@ -701,7 +701,7 @@ const AdminPanel: React.FC = () => {
 
       toast.loading('Generating PDF report...', { id: 'pdf-download' });
 
-      const response = await fetch(`${API_BASE_URL}/api/members/download-pdf`, {
+      const response = await fetch(`${RENDER_API_URL}/api/members/download-pdf`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,

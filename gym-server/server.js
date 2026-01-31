@@ -50,12 +50,9 @@ app.use('/api', limiter); // Apply to /api routes
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
-  'https://gym-frontend-hz0n.onrender.com',
-  'https://stargym.netlify.app',
-  'https://starfitnesspetlad.netlify.app',
-  'https://stargympetlad.netlify.app',
   'https://xyzgym.netlify.app',
-  'https://gym-management-system-psi.vercel.app'
+  'https://gymbackend-uqt3.onrender.com', // Allow Render backend to call itself if needed
+  'https://finalgym-weld.vercel.app' // Allow Vercel backend
 ];
 
 // Add environment-specific origins
@@ -178,9 +175,7 @@ app.options('/api/receipt/download/:userId', (req, res) => {
   const allowedOrigins = [
     'http://localhost:5173',
     'http://localhost:3000',
-    'https://stargympetlad.netlify.app',
-    'https://stargym.netlify.app',
-    'https://starfitnesspetlad.netlify.app'
+    'https://xyzgym.netlify.app'
   ];
   const origin = req.headers.origin;
   let allowedOrigin = '*';
@@ -253,9 +248,7 @@ app.get('/api/receipt/download/:userId', async (req, res) => {
     const allowedOrigins = [
       'http://localhost:5173',
       'http://localhost:3000',
-      'https://stargympetlad.netlify.app',
-      'https://stargym.netlify.app',
-      'https://starfitnesspetlad.netlify.app'
+      'https://xyzgym.netlify.app'
     ];
     const origin = req.headers.origin;
 
@@ -307,9 +300,7 @@ app.get('/api/receipt/download/:userId', async (req, res) => {
     const allowedOrigins = [
       'http://localhost:5173',
       'http://localhost:3000',
-      'https://stargympetlad.netlify.app',
-      'https://stargym.netlify.app',
-      'https://starfitnesspetlad.netlify.app'
+      'https://xyzgym.netlify.app'
     ];
     const origin = req.headers.origin;
     let allowedOrigin = '*';
@@ -378,9 +369,7 @@ app.get('/api/receipt/preview/:userId', async (req, res) => {
     const allowedOrigins = [
       'http://localhost:5173',
       'http://localhost:3000',
-      'https://stargympetlad.netlify.app',
-      'https://stargym.netlify.app',
-      'https://starfitnesspetlad.netlify.app'
+      'https://xyzgym.netlify.app'
     ];
     const origin = req.headers.origin;
     const allowedOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
@@ -411,9 +400,7 @@ app.get('/api/receipt/preview/:userId', async (req, res) => {
     const allowedOrigins = [
       'http://localhost:5173',
       'http://localhost:3000',
-      'https://stargympetlad.netlify.app',
-      'https://stargym.netlify.app',
-      'https://starfitnesspetlad.netlify.app'
+      'https://xyzgym.netlify.app'
     ];
     const origin = req.headers.origin;
     const allowedOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
@@ -461,7 +448,7 @@ app.get('/api/members/download-pdf', protect, async (req, res) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Length', pdfBuffer.length);
-    res.setHeader('Access-Control-Allow-Origin', req.headers.origin || 'https://stargympetlad.netlify.app');
+    res.setHeader('Access-Control-Allow-Origin', req.headers.origin || 'https://xyzgym.netlify.app');
     res.setHeader('Access-Control-Allow-Methods', 'GET');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
